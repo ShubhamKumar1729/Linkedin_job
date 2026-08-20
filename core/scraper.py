@@ -226,9 +226,16 @@ def get_cards(page):
     Returns deduplicated list of card elements.
     """
 
-    # Expand truncated post text
+    # Expand truncated post text. Use only LinkedIn's dedicated expansion
+    # buttons; broad `get_by_text("more")` matching can click unrelated links
+    # such as "Learn more" and open their target in a new browser tab.
     try:
-        more_buttons = page.get_by_text("more", exact=False)
+        more_buttons = page.locator(
+            "button.feed-shared-inline-show-more-text__see-more-less-toggle, "
+            "button.update-components-text__see-more-less-toggle, "
+            "button[aria-label='see more' i], "
+            "button[aria-label='…more' i]"
+        )
         for i in range(min(more_buttons.count(), 20)):
             try:
                 more_buttons.nth(i).click(timeout=800)

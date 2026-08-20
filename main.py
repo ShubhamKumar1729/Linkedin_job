@@ -304,12 +304,29 @@ def main():
 
     with sync_playwright() as pw:
         browser = launch_browser(pw)
-        # Persistent Chromium normally starts with one tab. Reuse it instead
-        # of opening an unnecessary second tab on every run.
-        page = browser.pages[0] if browser.pages else browser.new_page()
+        # Persistent Chromium normally starts with one tab. Reuse it and close
+        # stale tabs restored from earlier automation runs.
+        existing_pages = list(browser.pages)
+        page = existing_pages[0] if existing_pages else browser.new_page()
+        for extra_page in existing_pages[1:]:
+            try:
+                extra_page.close()
+            except Exception:
+                pass
 
-        # Check login once
+        # Check login once before guarding against accidental popup tabs.
         open_linkedin_and_check_login(page)
+
+        def close_unexpected_tab(new_page):
+            if new_page == page:
+                return
+            print("  [BROWSER] Closing unexpected tab opened by page content")
+            try:
+                new_page.close()
+            except Exception:
+                pass
+
+        browser.on("page", close_unexpected_tab)
 
         # Loop roles
         for i, role in enumerate(ROLES):
