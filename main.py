@@ -72,11 +72,14 @@ def wait_between_roles(current_role_name, next_role_name):
     print(f"  ⏳ Waiting  : {wait_seconds} seconds")
     print(f"  {'─' * 58}")
 
-    for remaining in range(wait_seconds, 0, -5):
+    remaining = wait_seconds
+    while remaining > 0:
         print(f"  ⏱  {remaining:>4} seconds remaining...", end="\r")
-        time.sleep(5)
+        sleep_seconds = min(5, remaining)
+        time.sleep(sleep_seconds)
+        remaining -= sleep_seconds
 
-    print(f"\n  ▶ Starting next role now!\n")
+    print("\n  ▶ Starting next role now!\n")
 
 
 def process_role(page, role, resume_path, sent_before_role):
@@ -260,7 +263,9 @@ def main():
 
     with sync_playwright() as pw:
         browser = launch_browser(pw)
-        page    = browser.new_page()
+        # Persistent Chromium normally starts with one tab. Reuse it instead
+        # of opening an unnecessary second tab on every run.
+        page = browser.pages[0] if browser.pages else browser.new_page()
 
         # Check login once
         open_linkedin_and_check_login(page)
@@ -322,4 +327,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n  [STOP] Automation stopped by user.\n")

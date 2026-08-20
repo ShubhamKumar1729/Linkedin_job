@@ -14,6 +14,7 @@ CARD_SELECTORS = [
     "div.feed-shared-update-v2",
     "li.reusable-search__result-container",
     "div[data-urn^='urn:li:activity']",
+    "div[data-urn]",
     "article[data-urn]",
     "article",
 ]
@@ -207,18 +208,16 @@ def get_cards(page):
 
     cards = []
 
-    # Use the first LinkedIn card selector that exists on the current page.
-    # Combining every selector collected both posts and large ancestor divs,
-    # which mixed several unrelated posts/emails into one fake job card.
+    # Use the first selector that produces actual email-containing post cards.
+    # A selector can exist in LinkedIn's DOM but match only empty/hidden shell
+    # elements, so do not stop merely because raw elements were found.
     for selector in CARD_SELECTORS:
         try:
             found = page.locator(selector).all()
         except Exception:
             continue
 
-        if not found:
-            continue
-
+        selector_cards = []
         for card in found:
             try:
                 text = clean(card.inner_text(timeout=1000))
@@ -236,14 +235,14 @@ def get_cards(page):
                 if any(j in low for j in JUNK_PHRASES):
                     continue
 
-                cards.append(card)
+                selector_cards.append(card)
 
             except Exception:
                 pass
 
-        # Do not fall through to broad fallback selectors once LinkedIn's
-        # current post-card structure has been identified.
-        break
+        if selector_cards:
+            cards = selector_cards
+            break
 
     # Deduplicate by first 700 chars of text
     unique = []
