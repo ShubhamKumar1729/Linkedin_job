@@ -43,7 +43,9 @@ these are true:
 1. The actual opening is the currently_evaluated_role or a normal close title
    variant in the same job family.
 2. The job is explicitly located in the United States or explicitly remote
-   within the United States. Ambiguous, global, and non-US locations fail.
+   within the United States. Any US state or city is acceptable; do not require
+   it to match the candidate's current city/state when relocation is allowed.
+   Ambiguous, global, and non-US locations fail.
 3. At least one supplied recruiter email is genuinely presented as the resume
    or application contact for that matching opening.
 4. Any explicit minimum experience requirement is no greater than
@@ -51,7 +53,10 @@ these are true:
    requirement is acceptable. For example, with a maximum of 5, requirements
    of 1-5 years pass and requirements of 10-12 years fail.
 5. Any explicit work-authorization restriction is compatible with the
-   candidate's configured work authorization.
+   candidate's configured work authorization. Treat STEM OPT as an EAD when a
+   post broadly allows EAD without excluding OPT/STEM OPT. Reject explicit
+   USC/US-citizen/Green-Card-only requirements and posts that explicitly say
+   no OPT/CPT or no STEM OPT.
 
 Bench-sales/hotlist posts, training or coaching promotions, résumé services,
 and posts that merely ask for engagement are not genuine job openings and must
