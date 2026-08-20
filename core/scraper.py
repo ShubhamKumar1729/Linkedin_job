@@ -13,15 +13,9 @@ JUNK_PHRASES = [
 CARD_SELECTORS = [
     "div.feed-shared-update-v2",
     "li.reusable-search__result-container",
-    "div[data-urn^='urn:li:activity']",
     "div[data-urn]",
-    "article[data-urn]",
     "article",
-    (
-        "xpath=//a[contains(@href, '/posts/') or "
-        "contains(@href, '/feed/update/')]/ancestor::*["
-        "(self::div or self::article or self::li) and contains(., '@')][1]"
-    ),
+    "main div",
 ]
 
 
@@ -213,54 +207,32 @@ def get_cards(page):
 
     cards = []
 
-    # Use the first selector that produces actual email-containing post cards.
-    # A selector can exist in LinkedIn's DOM but match only empty/hidden shell
-    # elements, so do not stop merely because raw elements were found.
-    selector_counts = []
-    for selector_index, selector in enumerate(CARD_SELECTORS, start=1):
+    for selector in CARD_SELECTORS:
         try:
             found = page.locator(selector).all()
+            for card in found:
+                try:
+                    text = clean(card.inner_text(timeout=1000))
+
+                    # Skip short or empty cards
+                    if len(text) < 40:
+                        continue
+
+                    # Must have at least one email
+                    if not extract_emails(text):
+                        continue
+
+                    # Skip navigation / UI junk
+                    low = text.lower()
+                    if any(j in low for j in JUNK_PHRASES):
+                        continue
+
+                    cards.append(card)
+
+                except Exception:
+                    pass
         except Exception:
-            selector_counts.append(f"{selector_index}:error")
-            continue
-
-        selector_cards = []
-        for card in found:
-            try:
-                text = clean(card.inner_text(timeout=1000))
-
-                # Skip short or empty cards
-                if len(text) < 40:
-                    continue
-
-                # Must have at least one email
-                if not extract_emails(text):
-                    continue
-
-                # Skip navigation / UI junk
-                low = text.lower()
-                if any(j in low for j in JUNK_PHRASES):
-                    continue
-
-                selector_cards.append(card)
-
-            except Exception:
-                pass
-
-        selector_counts.append(
-            f"{selector_index}:{len(found)}/{len(selector_cards)}"
-        )
-        if selector_cards:
-            cards = selector_cards
-            print(
-                f"  [SCRAPER] Selector {selector_index} found "
-                f"{len(cards)} email-containing post cards"
-            )
-            break
-
-    if not cards:
-        diagnostics = ", ".join(selector_counts)
-        print(f"  [SCRAPER] No matching post cards ({diagnostics})")
+            pass
 
     # Deduplicate by first 700 chars of text
     unique = []
