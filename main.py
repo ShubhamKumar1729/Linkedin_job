@@ -13,7 +13,7 @@ from config.settings import (
     RECRUITER_POLICY,
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
-    MIN_QUALITY_EMAILS_PER_ROLE,
+    UNIQUE_EMAILS_PER_ROLE,
     MAX_PASSES_PER_ROLE,
     NO_NEW_POST_PASSES,
     MAX_EMAILS_PER_POST,
@@ -49,12 +49,9 @@ def print_banner():
     print(f"  📄 Resume      : {RESUME_PATH.name}")
     print(f"  🎯 Total Roles : {len(ROLES)}")
     print(f"  📧 Max / Run   : {MAX_EMAILS_PER_RUN} successful emails")
+    print(f"  🔎 Explore/Role: {UNIQUE_EMAILS_PER_ROLE} unique recruiter emails")
     print(
-        f"  🎯 Minimum/Role: {MIN_QUALITY_EMAILS_PER_ROLE} quality emails "
-        "(not a cap)"
-    )
-    print(
-        f"  🔄 Search/Role : until minimum or {NO_NEW_POST_PASSES} "
+        f"  🔄 Search/Role : until exploration target or {NO_NEW_POST_PASSES} "
         f"no-new passes (safety max {MAX_PASSES_PER_ROLE})"
     )
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
@@ -109,6 +106,7 @@ def process_role(page, role, resume_path, sent_before_role):
     isolated so the next visible post can still be processed.
     """
     role_sent = 0
+    unique_emails_explored = set()
     ai_results_by_post = {}
     seen_card_keys = set()
     seen_post_links = set()
@@ -119,8 +117,8 @@ def process_role(page, role, resume_path, sent_before_role):
     search_and_filter(page, role)
     page.wait_for_timeout(3000)
 
-    # Keep loading additional results until the per-role quality target,
-    # global successful-send limit, or configured pass limit is reached.
+    # Keep loading results until the unique-email exploration target, result
+    # exhaustion, global successful-send limit, or safety pass limit.
     for pass_num in range(1, MAX_PASSES_PER_ROLE + 1):
 
         if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
@@ -220,6 +218,18 @@ def process_role(page, role, resume_path, sent_before_role):
                     continue
                 seen_post_links.add(post_link)
 
+                new_unique_emails = set(emails) - unique_emails_explored
+                unique_emails_explored.update(emails)
+                print(
+                    f"       [EXPLORE] Unique recruiter emails: "
+                    f"{len(unique_emails_explored)}/{UNIQUE_EMAILS_PER_ROLE}"
+                    + (
+                        f" (+{len(new_unique_emails)} new)"
+                        if new_unique_emails
+                        else ""
+                    )
+                )
+
                 # Avoid an unnecessary AI request when every email/post pair
                 # has already been recorded by the existing CSV tracker.
                 unsent_emails = []
@@ -318,8 +328,9 @@ def process_role(page, role, resume_path, sent_before_role):
                             f"{MAX_EMAILS_PER_RUN} emails sent"
                         )
                         print(
-                            f"       [STATS] Role: {role_sent} quality emails "
-                            f"(minimum goal {MIN_QUALITY_EMAILS_PER_ROLE})"
+                            f"       [STATS] Role: {role_sent} quality sent | "
+                            f"{len(unique_emails_explored)}/"
+                            f"{UNIQUE_EMAILS_PER_ROLE} unique explored"
                         )
                     else:
                         print(
@@ -334,13 +345,13 @@ def process_role(page, role, resume_path, sent_before_role):
         if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
             break
 
-        # Once the minimum is achieved, finish the current loaded batch and
-        # move to the next role. This can still send multiple quality emails
-        # from the same pass.
-        if role_sent >= MIN_QUALITY_EMAILS_PER_ROLE:
+        # Finish the current loaded batch, then move on once at least the
+        # configured number of unique recruiter emails has been explored.
+        if len(unique_emails_explored) >= UNIQUE_EMAILS_PER_ROLE:
             print(
-                f"\n  [SEARCH] Minimum achieved for {role['name']}; "
-                "moving to the next role."
+                f"\n  [SEARCH] Exploration target reached for "
+                f"{role['name']}: {len(unique_emails_explored)}/"
+                f"{UNIQUE_EMAILS_PER_ROLE} unique emails."
             )
             break
 
@@ -356,21 +367,25 @@ def process_role(page, role, resume_path, sent_before_role):
         if pass_num < MAX_PASSES_PER_ROLE:
             print(
                 f"\n  📜 Scrolling for more posts "
-                f"({role_sent} quality sends so far; minimum goal "
-                f"{MIN_QUALITY_EMAILS_PER_ROLE})..."
+                f"({len(unique_emails_explored)}/"
+                f"{UNIQUE_EMAILS_PER_ROLE} unique emails explored; "
+                f"{role_sent} quality sent)..."
             )
             scroll_page(page, rounds=SCROLL_ROUNDS)
 
     if sent_before_role + role_sent < MAX_EMAILS_PER_RUN:
-        goal_status = (
-            "minimum achieved"
-            if role_sent >= MIN_QUALITY_EMAILS_PER_ROLE
-            else "results exhausted before minimum"
-        )
+        if len(unique_emails_explored) >= UNIQUE_EMAILS_PER_ROLE:
+            exploration_status = "target achieved"
+        elif no_new_post_passes >= NO_NEW_POST_PASSES:
+            exploration_status = "Past-24-Hours results exhausted"
+        else:
+            exploration_status = "safety pass limit reached"
+        pass_label = "pass" if pass_num == 1 else "passes"
         print(
-            f"\n  [STATS] {role['name']}: {role_sent} quality emails "
-            f"({goal_status}; goal {MIN_QUALITY_EMAILS_PER_ROLE}) after "
-            f"{pass_num} passes"
+            f"\n  [STATS] {role['name']}: explored "
+            f"{len(unique_emails_explored)}/{UNIQUE_EMAILS_PER_ROLE} unique "
+            f"emails, sent {role_sent} quality applications "
+            f"({exploration_status}) after {pass_num} {pass_label}"
         )
 
     return role_sent

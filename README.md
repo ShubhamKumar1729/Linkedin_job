@@ -18,8 +18,8 @@ Groq to evaluate candidate/job relevance before sending an application email.
    work authorization, and every staffing/third-party recruiting contact.
 7. Send only when Groq returns `relevant: true`, its score meets
    `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
-8. Keep scrolling a role until at least one quality send is made or repeated
-   scrolls load no new Past-24-Hours posts; retain a run-wide send limit.
+8. Explore up to 50 unique recruiter emails per role, send every quality direct
+   employer match, and stop early only when Past-24-Hours results are exhausted.
 
 Groq only evaluates relevance. Email generation, sending, and sent-application
 tracking remain local to this project.
@@ -51,8 +51,8 @@ GROQ_MAX_RETRIES=2
 GROQ_MAX_COMPLETION_TOKENS=1000
 MAX_EXPERIENCE_YEARS=5
 MAX_EMAILS_PER_RUN=100
-MIN_QUALITY_EMAILS_PER_ROLE=1
-MAX_PASSES_PER_ROLE=12
+UNIQUE_EMAILS_PER_ROLE=50
+MAX_PASSES_PER_ROLE=30
 NO_NEW_POST_PASSES=2
 DELAY_BETWEEN_AI_REQUESTS=15
 GROQ_RATE_LIMIT_COOLDOWN_SECONDS=60
@@ -76,10 +76,10 @@ contacts are rejected under this policy.
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.
 
-`MIN_QUALITY_EMAILS_PER_ROLE=1` keeps a role active until the current loaded
-batch produces at least one quality send, or two consecutive scroll passes load
-no new Past-24-Hours cards. All quality matches in the successful pass can be
-sent. `MAX_PASSES_PER_ROLE` is only an infinite-scroll safety ceiling.
+`UNIQUE_EMAILS_PER_ROLE=50` keeps each role active while the bot discovers and
+AI-checks unique recruiter contacts. It sends every direct-employer quality
+match and stops after at least 50 unique addresses are explored, two consecutive
+scroll passes load no new Past-24-Hours cards, or the safety pass limit is hit.
 
 AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If Groq returns HTTP
 429, response reset headers (or `GROQ_RATE_LIMIT_COOLDOWN_SECONDS`) delay the
