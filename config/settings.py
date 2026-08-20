@@ -38,7 +38,7 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 # ── Groq AI ────────────────────────────────────────────────
 GROQ_API_KEY             = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_MODEL               = os.getenv(
-    "GROQ_MODEL", "llama-3.3-70b-versatile"
+    "GROQ_MODEL", "openai/gpt-oss-120b"
 ).strip()
 AI_RELEVANCE_THRESHOLD   = _env_int(
     "AI_RELEVANCE_THRESHOLD", 70, minimum=0, maximum=100

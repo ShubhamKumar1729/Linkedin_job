@@ -39,7 +39,7 @@ Important AI settings:
 
 ```dotenv
 GROQ_API_KEY=your-groq-api-key
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 AI_RELEVANCE_THRESHOLD=70
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_RETRIES=2
@@ -67,7 +67,9 @@ in the terminal when prompted. The persistent browser profile is stored in
 - A Groq timeout, rate limit, API error, or invalid response fails closed: that
   job is skipped and no email is sent.
 - Model availability and API rate limits depend on the Groq account and plan.
-  Change `GROQ_MODEL` if the configured model is unavailable.
+  The default is `openai/gpt-oss-120b`; the former
+  `llama-3.3-70b-versatile` model was retired for free/developer usage on
+  August 16, 2026. Change `GROQ_MODEL` if the configured model is unavailable.
 - LinkedIn UI/DOM changes can require selector updates.
 - Use conservative sending limits and comply with LinkedIn, Gmail, privacy,
   anti-spam, and applicable legal requirements.

@@ -114,6 +114,8 @@ def is_valid_recruiter_email(email):
     local, domain = email.rsplit("@", 1)
     if domain in BAD_EMAIL_DOMAINS:
         return False
+    if domain.endswith((".example", ".invalid", ".test", ".localhost")):
+        return False
     if local in BAD_EMAIL_PREFIXES:
         return False
     if len(local) <= 1:

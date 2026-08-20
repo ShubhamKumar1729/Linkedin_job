@@ -163,6 +163,10 @@ def evaluate_job_relevance(job_details, role):
             detail = "rate limit reached"
         elif "Timeout" in error_name:
             detail = "request timed out"
+        elif status_code == 404:
+            detail = (
+                f"model {GROQ_MODEL!r} was not found or is no longer available"
+            )
         elif status_code:
             detail = f"API status {status_code}"
         elif isinstance(exc, (ValueError, json.JSONDecodeError)):

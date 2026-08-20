@@ -13,9 +13,9 @@ JUNK_PHRASES = [
 CARD_SELECTORS = [
     "div.feed-shared-update-v2",
     "li.reusable-search__result-container",
-    "div[data-urn]",
+    "div[data-urn^='urn:li:activity']",
+    "article[data-urn]",
     "article",
-    "main div",
 ]
 
 
@@ -207,32 +207,43 @@ def get_cards(page):
 
     cards = []
 
+    # Use the first LinkedIn card selector that exists on the current page.
+    # Combining every selector collected both posts and large ancestor divs,
+    # which mixed several unrelated posts/emails into one fake job card.
     for selector in CARD_SELECTORS:
         try:
             found = page.locator(selector).all()
-            for card in found:
-                try:
-                    text = clean(card.inner_text(timeout=1000))
-
-                    # Skip short or empty cards
-                    if len(text) < 40:
-                        continue
-
-                    # Must have at least one email
-                    if not extract_emails(text):
-                        continue
-
-                    # Skip navigation / UI junk
-                    low = text.lower()
-                    if any(j in low for j in JUNK_PHRASES):
-                        continue
-
-                    cards.append(card)
-
-                except Exception:
-                    pass
         except Exception:
-            pass
+            continue
+
+        if not found:
+            continue
+
+        for card in found:
+            try:
+                text = clean(card.inner_text(timeout=1000))
+
+                # Skip short or empty cards
+                if len(text) < 40:
+                    continue
+
+                # Must have at least one email
+                if not extract_emails(text):
+                    continue
+
+                # Skip navigation / UI junk
+                low = text.lower()
+                if any(j in low for j in JUNK_PHRASES):
+                    continue
+
+                cards.append(card)
+
+            except Exception:
+                pass
+
+        # Do not fall through to broad fallback selectors once LinkedIn's
+        # current post-card structure has been identified.
+        break
 
     # Deduplicate by first 700 chars of text
     unique = []
