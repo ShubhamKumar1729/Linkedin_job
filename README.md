@@ -12,14 +12,14 @@ Groq to evaluate candidate/job relevance before sending an application email.
 3. Validate only deterministic requirements: non-empty job text, recruiter
    email format, post link, and duplicate-send status.
 4. Skip email/post pairs already recorded in `output/sent_emails.csv`.
-5. Send the complete job description, target role, candidate location, and
+5. Send the complete job description, target role, candidate details, and
    extracted recruiter emails to Groq for the relevance decision.
-6. In the default `role_location` mode, Groq alone rejects wrong roles,
-   non-US jobs, bench sales/training, and unrelated or suspicious contacts.
+6. Groq rejects wrong roles, non-US jobs, excessive experience, incompatible
+   work authorization, bench sales/training, and suspicious contacts.
 7. Send only when Groq returns `relevant: true`, its score meets
    `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
-8. Stop after `MAX_EMAILS_PER_RUN` application emails have been sent
-   successfully. Filtered, duplicate, failed, and irrelevant jobs do not count.
+8. Continue each role up to its successful quality target/pass limit, and stop
+   the complete run at `MAX_EMAILS_PER_RUN`. Skips and failures do not count.
 
 Groq only evaluates relevance. Email generation, sending, and sent-application
 tracking remain local to this project.
@@ -50,6 +50,8 @@ GROQ_MAX_RETRIES=2
 GROQ_MAX_COMPLETION_TOKENS=1000
 MAX_EXPERIENCE_YEARS=5
 MAX_EMAILS_PER_RUN=50
+TARGET_EMAILS_PER_ROLE=3
+MAX_PASSES_PER_ROLE=5
 MAX_EMAILS_PER_POST=5
 MAX_JOB_DESCRIPTION_CHARS=12000
 ```
@@ -62,6 +64,11 @@ skills are supplied for context but individual tool gaps are not a hard gate.
 
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.
+
+`TARGET_EMAILS_PER_ROLE=3` makes the bot continue loading results for a role
+until three quality applications are sent or `MAX_PASSES_PER_ROLE` is reached.
+Only successful Groq-approved sends count. This improves coverage but cannot
+guarantee three when the past-24-hour results contain fewer qualifying posts.
 
 `MAX_EMAILS_PER_POST` and `MAX_JOB_DESCRIPTION_CHARS` are technical DOM guards:
 they reject accidental LinkedIn parent containers that combine many unrelated

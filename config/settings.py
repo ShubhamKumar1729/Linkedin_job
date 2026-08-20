@@ -91,6 +91,12 @@ _legacy_email_limit      = os.getenv("MAX_EMAILS_PER_ROLE", "50")
 MAX_EMAILS_PER_RUN       = _env_int(
     "MAX_EMAILS_PER_RUN", _legacy_email_limit, minimum=1
 )
+TARGET_EMAILS_PER_ROLE   = _env_int(
+    "TARGET_EMAILS_PER_ROLE", 3, minimum=1
+)
+MAX_PASSES_PER_ROLE      = _env_int(
+    "MAX_PASSES_PER_ROLE", 5, minimum=1, maximum=20
+)
 MAX_EMAILS_PER_POST      = _env_int("MAX_EMAILS_PER_POST", 5, minimum=1)
 MAX_JOB_DESCRIPTION_CHARS = _env_int(
     "MAX_JOB_DESCRIPTION_CHARS", 12000, minimum=1000
