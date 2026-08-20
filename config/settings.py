@@ -4,6 +4,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _env_int(name, default, minimum=None, maximum=None):
+    """Read and validate an integer environment setting."""
+    raw_value = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {raw_value!r}") from exc
+
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{name} must be at most {maximum}")
+    return value
+
+
 # ── Paths ──────────────────────────────────────────────────
 BASE_DIR    = Path(__file__).parent.parent
 OUTPUT_DIR  = BASE_DIR / "output"
@@ -18,6 +34,21 @@ RESUME_PATH     = OUTPUT_DIR / RESUME_FILENAME
 # ── Gmail Credentials ──────────────────────────────────────
 GMAIL_ID           = os.getenv("GMAIL_ID", "").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
+
+# ── Groq AI ────────────────────────────────────────────────
+GROQ_API_KEY             = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL               = os.getenv(
+    "GROQ_MODEL", "llama-3.3-70b-versatile"
+).strip()
+AI_RELEVANCE_THRESHOLD   = _env_int(
+    "AI_RELEVANCE_THRESHOLD", 70, minimum=0, maximum=100
+)
+GROQ_TIMEOUT_SECONDS     = _env_int(
+    "GROQ_TIMEOUT_SECONDS", 30, minimum=1
+)
+GROQ_MAX_RETRIES         = _env_int(
+    "GROQ_MAX_RETRIES", 2, minimum=0, maximum=5
+)
 
 # ── Candidate Info ─────────────────────────────────────────
 CANDIDATE = {
@@ -44,11 +75,25 @@ CC_EMAILS  = _parse_list("CC_EMAILS")
 BCC_EMAILS = _parse_list("BCC_EMAILS")
 
 # ── Bot Settings ───────────────────────────────────────────
-MAX_EMAILS_PER_ROLE    = int(os.getenv("MAX_EMAILS_PER_ROLE",    "15"))
-DELAY_BETWEEN_EMAILS   = int(os.getenv("DELAY_BETWEEN_EMAILS",   "12"))
-SCROLL_ROUNDS          = int(os.getenv("SCROLL_ROUNDS",          "8"))
-WAIT_BETWEEN_ROLES_MIN = int(os.getenv("WAIT_BETWEEN_ROLES_MIN", "60"))
-WAIT_BETWEEN_ROLES_MAX = int(os.getenv("WAIT_BETWEEN_ROLES_MAX", "120"))
+# MAX_EMAILS_PER_ROLE is accepted as a backwards-compatible fallback.
+_legacy_email_limit      = os.getenv("MAX_EMAILS_PER_ROLE", "50")
+MAX_EMAILS_PER_RUN       = _env_int(
+    "MAX_EMAILS_PER_RUN", _legacy_email_limit, minimum=1
+)
+DELAY_BETWEEN_EMAILS     = _env_int("DELAY_BETWEEN_EMAILS", 12, minimum=0)
+SCROLL_ROUNDS            = _env_int("SCROLL_ROUNDS", 8, minimum=0)
+WAIT_BETWEEN_ROLES_MIN   = _env_int(
+    "WAIT_BETWEEN_ROLES_MIN", 60, minimum=0
+)
+WAIT_BETWEEN_ROLES_MAX   = _env_int(
+    "WAIT_BETWEEN_ROLES_MAX", 120, minimum=0
+)
+
+if WAIT_BETWEEN_ROLES_MAX < WAIT_BETWEEN_ROLES_MIN:
+    raise ValueError(
+        "WAIT_BETWEEN_ROLES_MAX must be greater than or equal to "
+        "WAIT_BETWEEN_ROLES_MIN"
+    )
 
 # ── Email Filtering ────────────────────────────────────────
 BAD_EMAIL_PREFIXES = {

@@ -19,6 +19,81 @@ CARD_SELECTORS = [
 ]
 
 
+def _extract_labeled_value(text, labels):
+    """Extract a single-line value following a known job-data label."""
+    label_pattern = "|".join(re.escape(label) for label in labels)
+    match = re.search(
+        rf"(?im)^\s*(?:{label_pattern})\s*[:\-]\s*(.+?)\s*$",
+        text,
+    )
+    return clean(match.group(1)) if match else ""
+
+
+def extract_job_details(post_text, role):
+    """
+    Build structured job data without inventing unavailable information.
+
+    LinkedIn content posts are free-form, so explicitly labelled values are
+    extracted when present. The full, untruncated post text is always included
+    for Groq to evaluate when individual fields are not available.
+    """
+    post_text = clean(post_text)
+
+    job_title = _extract_labeled_value(
+        post_text,
+        ["job title", "position title", "position", "role"],
+    )
+    company = _extract_labeled_value(
+        post_text,
+        ["company", "client", "end client"],
+    )
+    location = _extract_labeled_value(
+        post_text,
+        ["job location", "location", "work location"],
+    )
+    required_skills = _extract_labeled_value(
+        post_text,
+        ["required skills", "must have skills", "skills required", "skills"],
+    )
+    experience = _extract_labeled_value(
+        post_text,
+        ["experience requirements", "required experience", "experience"],
+    )
+    employment_type = _extract_labeled_value(
+        post_text,
+        ["employment type", "job type", "engagement type"],
+    )
+
+    if not experience:
+        experience_match = re.search(
+            r"(?i)\b\d+\+?(?:\s*(?:-|to)\s*\d+\+?)?\s*years?"
+            r"(?:\s+of)?\s+experience\b",
+            post_text,
+        )
+        if experience_match:
+            experience = clean(experience_match.group(0))
+
+    if not employment_type:
+        type_match = re.search(
+            r"(?i)\b(full[ -]?time|part[ -]?time|contract(?:-to-hire)?|"
+            r"contract to hire|temporary|internship|c2c|corp to corp|w2)\b",
+            post_text,
+        )
+        if type_match:
+            employment_type = clean(type_match.group(0))
+
+    return {
+        "job_description": post_text,
+        "job_title": job_title or role.get("name", "Not specified"),
+        "company": company or "Not specified",
+        "location": location or "Not specified",
+        "required_skills": required_skills or "Not explicitly specified",
+        "experience_requirements": experience or "Not explicitly specified",
+        "employment_type": employment_type or "Not explicitly specified",
+        "linkedin_search_query": role.get("search", ""),
+    }
+
+
 def extract_poster_name(card):
     """
     Try to extract the name of the person who made the post.

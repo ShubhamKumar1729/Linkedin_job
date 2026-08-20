@@ -2,3 +2,4 @@ playwright
 yagmail
 pandas
 python-dotenv
+groq

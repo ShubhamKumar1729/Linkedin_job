@@ -7,7 +7,10 @@ from config.settings import (
     GMAIL_APP_PASSWORD,
     RESUME_PATH,
     ROLES,
-    MAX_EMAILS_PER_ROLE,
+    GROQ_API_KEY,
+    GROQ_MODEL,
+    AI_RELEVANCE_THRESHOLD,
+    MAX_EMAILS_PER_RUN,
     SCROLL_ROUNDS,
     WAIT_BETWEEN_ROLES_MIN,
     WAIT_BETWEEN_ROLES_MAX,
@@ -18,10 +21,16 @@ from core.browser      import (
     open_linkedin_and_check_login,
     search_and_filter,
 )
-from core.scraper      import get_cards, get_post_link_from_card, extract_poster_name
+from core.scraper      import (
+    get_cards,
+    get_post_link_from_card,
+    extract_poster_name,
+    extract_job_details,
+)
 from core.filters      import should_send_to_post, filter_recruiter_emails
+from core.groq_service import evaluate_job_relevance
 from core.email_sender import send_email
-from core.tracker      import load_sent_cache
+from core.tracker      import already_sent, load_sent_cache
 from utils.helpers     import clean, extract_emails
 
 
@@ -31,7 +40,9 @@ def print_banner():
     print("═" * 62)
     print(f"  📄 Resume      : {RESUME_PATH.name}")
     print(f"  🎯 Total Roles : {len(ROLES)}")
-    print(f"  📧 Max / Role  : {MAX_EMAILS_PER_ROLE} emails")
+    print(f"  📧 Max / Run   : {MAX_EMAILS_PER_RUN} successful emails")
+    print(f"  🤖 Groq Model  : {GROQ_MODEL}")
+    print(f"  ✅ AI Threshold: {AI_RELEVANCE_THRESHOLD}")
     print(f"  ⏳ Wait/Role   : "
           f"{WAIT_BETWEEN_ROLES_MIN}-{WAIT_BETWEEN_ROLES_MAX} seconds")
     print("═" * 62)
@@ -68,10 +79,12 @@ def wait_between_roles(current_role_name, next_role_name):
     print(f"\n  ▶ Starting next role now!\n")
 
 
-def process_role(page, role, resume_path):
+def process_role(page, role, resume_path, sent_before_role):
     """
-    Auto search + apply filters + scrape + send emails.
-    Returns number of emails sent for this role.
+    Search, filter, AI-check, and email jobs for one role.
+
+    The run limit counts only successful sends. All job-level failures are
+    isolated so the next visible post can still be processed.
     """
     role_sent = 0
 
@@ -82,57 +95,102 @@ def process_role(page, role, resume_path):
     # ── Two passes ────────────────────────────────────────
     for pass_num in range(1, 3):
 
-        if role_sent >= MAX_EMAILS_PER_ROLE:
+        if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
             break
 
         cards = get_cards(page)
         print(f"\n  📋 Pass {pass_num} - Posts found: {len(cards)}")
 
         if not cards:
-            print("  ⚠  No posts with emails visible.\n")
+            print("  [SKIP] No posts with recruiter emails visible.\n")
 
         for idx, card in enumerate(cards, start=1):
 
-            if role_sent >= MAX_EMAILS_PER_ROLE:
-                print(f"\n  🎯 Max {MAX_EMAILS_PER_ROLE} reached!")
+            if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
+                print(
+                    f"\n  [STATS] Successful email limit reached: "
+                    f"{MAX_EMAILS_PER_RUN}/{MAX_EMAILS_PER_RUN}"
+                )
                 break
 
             try:
                 post_text = clean(card.inner_text(timeout=2000))
+                if not post_text:
+                    print(f"  {idx:>3}. [SKIP] Missing job description")
+                    continue
 
-                # Gate 1: filter post
+                job_details = extract_job_details(post_text, role)
+                job_title = job_details["job_title"]
+                company = job_details["company"]
+                print(f"\n  {idx:>3}. [JOB] Found: {job_title} - {company}")
+
+                # Find recruiter email before evaluating the job.
+                emails = filter_recruiter_emails(extract_emails(post_text))
+                if not emails:
+                    print("       [SKIP] Missing or invalid recruiter email")
+                    continue
+                print(f"       [EMAIL] Recruiter email found: {', '.join(emails)}")
+
+                # Preserve all existing/basic post filters.
                 allowed, reason = should_send_to_post(post_text)
                 if not allowed:
-                    print(f"  {idx:>3}. ⛔ Skipped → {reason}")
+                    print(f"       [FILTER] Rejected: {reason}")
+                    print("       [SKIP] Job skipped")
                     continue
+                print("       [FILTER] Passed basic filters")
 
-                # Gate 2: extract emails
-                emails = filter_recruiter_emails(
-                    extract_emails(post_text)
-                )
-                if not emails:
-                    print(f"  {idx:>3}. ⛔ No valid email")
-                    continue
-
-                # Gate 3: get post link
                 post_link = get_post_link_from_card(page, card)
                 if not post_link:
-                    print(f"  {idx:>3}. ⛔ No post link")
+                    print("       [SKIP] Missing or invalid LinkedIn post link")
                     continue
 
-                # Get recruiter name
-                recruiter_name = extract_poster_name(card)
+                # Avoid an unnecessary AI request when every email/post pair
+                # has already been recorded by the existing CSV tracker.
+                unsent_emails = []
+                for email in emails:
+                    if already_sent(email, post_link):
+                        print(
+                            f"       [SKIP] Duplicate application already sent: "
+                            f"{email}"
+                        )
+                    else:
+                        unsent_emails.append(email)
 
-                print(f"\n  {idx:>3}. ✅ Valid post")
+                if not unsent_emails:
+                    continue
+
+                recruiter_name = extract_poster_name(card)
                 print(f"       🔗 {post_link}")
                 print(f"       👤 {recruiter_name or 'Name not found'}")
-                print(f"       📧 {emails}")
 
-                # Send email
-                for email in emails:
-                    if role_sent >= MAX_EMAILS_PER_ROLE:
+                # Groq only decides relevance. It never generates or sends
+                # the application email.
+                print("       [AI] Sending complete job data to Groq...")
+                ai_result = evaluate_job_relevance(job_details, role)
+                if ai_result is None:
+                    print("       [SKIP] Job skipped safely after AI failure")
+                    continue
+
+                score = ai_result["score"]
+                ai_approved = (
+                    ai_result["relevant"]
+                    and score >= AI_RELEVANCE_THRESHOLD
+                )
+                decision = "RELEVANT" if ai_approved else "NOT RELEVANT"
+
+                print(f"       [AI] Relevance score: {score}")
+                print(f"       [AI] Decision: {decision}")
+                print(f"       [AI] Reason: {ai_result['reason']}")
+
+                if not ai_approved:
+                    print("       [SKIP] Job skipped")
+                    continue
+
+                for email in unsent_emails:
+                    if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
                         break
 
+                    print(f"       [EMAIL] Sending application to {email}...")
                     success = send_email(
                         to_email=email,
                         role=role,
@@ -144,17 +202,28 @@ def process_role(page, role, resume_path):
 
                     if success:
                         role_sent += 1
+                        run_sent = sent_before_role + role_sent
+                        print("       [EMAIL] Application sent successfully")
                         print(
-                            f"    📨 Progress: "
-                            f"{role_sent}/{MAX_EMAILS_PER_ROLE}"
+                            f"       [STATS] {run_sent}/"
+                            f"{MAX_EMAILS_PER_RUN} emails sent"
+                        )
+                    else:
+                        print(
+                            "       [EMAIL] Sending failed; continuing to "
+                            "the next job"
                         )
 
             except Exception as e:
-                print(f"  {idx:>3}. ❌ Error: {e}")
+                print(f"  {idx:>3}. [ERROR] Job processing failed: {e}")
+                print("       [SKIP] Job skipped safely")
 
-        # Scroll after first pass
-        if pass_num == 1:
-            print(f"\n  📜 Scrolling for more posts...")
+        # Scroll after first pass unless the successful-send limit was met.
+        if (
+            pass_num == 1
+            and sent_before_role + role_sent < MAX_EMAILS_PER_RUN
+        ):
+            print("\n  📜 Scrolling for more posts...")
             scroll_page(page, rounds=SCROLL_ROUNDS)
 
     return role_sent
@@ -165,6 +234,14 @@ def main():
     # ── Checks ─────────────────────────────────────────────
     if not GMAIL_ID or not GMAIL_APP_PASSWORD:
         print("\n❌ Gmail credentials missing in .env!")
+        return
+
+    if not GROQ_API_KEY:
+        print("\n❌ GROQ_API_KEY is missing in .env!")
+        return
+
+    if not GROQ_MODEL:
+        print("\n❌ GROQ_MODEL is missing in .env!")
         return
 
     if not ROLES:
@@ -193,7 +270,12 @@ def main():
 
             print_role_banner(role)
 
-            role_sent    = process_role(page, role, RESUME_PATH)
+            role_sent = process_role(
+                page,
+                role,
+                RESUME_PATH,
+                sent_before_role=grand_total,
+            )
             grand_total += role_sent
 
             role_summary.append({
@@ -207,6 +289,14 @@ def main():
             print(f"  │  📊 Total  : {grand_total:<38}│")
             print(f"  └{'─' * 50}┘")
 
+            limit_reached = grand_total >= MAX_EMAILS_PER_RUN
+            if limit_reached:
+                print(
+                    f"\n  [STATS] Run stopped after {grand_total} successful "
+                    "application emails."
+                )
+                break
+
             is_last = (i == len(ROLES) - 1)
             if not is_last:
                 next_role = ROLES[i + 1]
@@ -216,7 +306,10 @@ def main():
 
     # Final summary
     print("\n\n" + "═" * 62)
-    print("  ✅ ALL ROLES COMPLETED!")
+    if grand_total >= MAX_EMAILS_PER_RUN:
+        print("  ✅ SUCCESSFUL EMAIL LIMIT REACHED!")
+    else:
+        print("  ✅ ALL ROLES COMPLETED!")
     print("═" * 62)
     print(f"  {'Role':<35} {'Sent':>6}")
     print(f"  {'─'*35} {'─'*6}")
