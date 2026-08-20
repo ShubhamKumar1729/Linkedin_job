@@ -57,6 +57,15 @@ GROQ_MAX_RETRIES         = _env_int(
 GROQ_MAX_COMPLETION_TOKENS = _env_int(
     "GROQ_MAX_COMPLETION_TOKENS", 1000, minimum=300
 )
+DELAY_BETWEEN_AI_REQUESTS = _env_int(
+    "DELAY_BETWEEN_AI_REQUESTS", 15, minimum=0
+)
+GROQ_RATE_LIMIT_COOLDOWN_SECONDS = _env_int(
+    "GROQ_RATE_LIMIT_COOLDOWN_SECONDS", 60, minimum=1
+)
+GROQ_MAX_RATE_LIMIT_WAIT_SECONDS = _env_int(
+    "GROQ_MAX_RATE_LIMIT_WAIT_SECONDS", 300, minimum=1
+)
 
 # ── Candidate Info ─────────────────────────────────────────
 CANDIDATE = {
@@ -95,7 +104,7 @@ TARGET_EMAILS_PER_ROLE   = _env_int(
     "TARGET_EMAILS_PER_ROLE", 3, minimum=1
 )
 MAX_PASSES_PER_ROLE      = _env_int(
-    "MAX_PASSES_PER_ROLE", 5, minimum=1, maximum=20
+    "MAX_PASSES_PER_ROLE", 3, minimum=1, maximum=20
 )
 MAX_EMAILS_PER_POST      = _env_int("MAX_EMAILS_PER_POST", 5, minimum=1)
 MAX_JOB_DESCRIPTION_CHARS = _env_int(

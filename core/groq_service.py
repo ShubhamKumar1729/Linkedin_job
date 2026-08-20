@@ -1,4 +1,6 @@
 import json
+import re
+import time
 from functools import lru_cache
 
 from groq import Groq
@@ -7,10 +9,13 @@ from config.settings import (
     AI_MATCH_MODE,
     AI_RELEVANCE_THRESHOLD,
     CANDIDATE,
+    DELAY_BETWEEN_AI_REQUESTS,
     GROQ_API_KEY,
     GROQ_MAX_COMPLETION_TOKENS,
+    GROQ_MAX_RATE_LIMIT_WAIT_SECONDS,
     GROQ_MAX_RETRIES,
     GROQ_MODEL,
+    GROQ_RATE_LIMIT_COOLDOWN_SECONDS,
     GROQ_TIMEOUT_SECONDS,
     MAX_EXPERIENCE_YEARS,
     ROLES,
@@ -74,6 +79,77 @@ Require a genuine recruiter contact and a strong match across target role, US
 location, candidate skills, experience, work authorization, and explicit job
 requirements. Do not invent missing qualifications.
 """
+
+_LAST_REQUEST_STARTED = 0.0
+_RATE_LIMITED_UNTIL = 0.0
+
+
+def _parse_wait_seconds(value):
+    """Parse Groq retry/reset headers such as '12.5s' or '2m 3s'."""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    try:
+        return max(0.0, float(text))
+    except ValueError:
+        pass
+
+    total = 0.0
+    matched = False
+    for amount, unit in re.findall(r"(\d+(?:\.\d+)?)\s*(ms|s|m|h)", text):
+        matched = True
+        amount = float(amount)
+        multiplier = {"ms": 0.001, "s": 1, "m": 60, "h": 3600}[unit]
+        total += amount * multiplier
+    return total if matched else None
+
+
+def _rate_limit_wait_seconds(exc):
+    """Read a useful cooldown from Groq's HTTP response headers."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", {}) or {}
+
+    retry_ms = headers.get("retry-after-ms")
+    if retry_ms is not None:
+        try:
+            return min(
+                float(retry_ms) / 1000,
+                GROQ_MAX_RATE_LIMIT_WAIT_SECONDS,
+            )
+        except (TypeError, ValueError):
+            pass
+
+    for header in (
+        "retry-after",
+        "x-ratelimit-reset-tokens",
+        "x-ratelimit-reset-requests",
+    ):
+        parsed = _parse_wait_seconds(headers.get(header))
+        if parsed is not None:
+            return min(parsed, GROQ_MAX_RATE_LIMIT_WAIT_SECONDS)
+
+    return GROQ_RATE_LIMIT_COOLDOWN_SECONDS
+
+
+def _pace_request():
+    """Space API calls and honor any cooldown established by HTTP 429."""
+    global _LAST_REQUEST_STARTED
+
+    now = time.monotonic()
+    next_regular_request = _LAST_REQUEST_STARTED + DELAY_BETWEEN_AI_REQUESTS
+    next_allowed = max(next_regular_request, _RATE_LIMITED_UNTIL)
+    wait_seconds = max(0.0, next_allowed - now)
+    if wait_seconds > 0.05:
+        print(f"  [AI] Rate pacing: waiting {wait_seconds:.1f} seconds...")
+        time.sleep(wait_seconds)
+
+    _LAST_REQUEST_STARTED = time.monotonic()
+
+
+def _create_completion(client, **request_options):
+    _pace_request()
+    return client.chat.completions.create(**request_options)
+
 
 @lru_cache(maxsize=1)
 def _get_client():
@@ -197,6 +273,8 @@ def evaluate_job_relevance(job_details, role):
     None for missing data, configuration problems, API failures, timeouts,
     rate limits, or invalid model output so callers always fail closed.
     """
+    global _RATE_LIMITED_UNTIL
+
     if not isinstance(job_details, dict):
         print("  [AI] Invalid job data: expected structured job details")
         return None
@@ -251,7 +329,8 @@ def evaluate_job_relevance(job_details, role):
             # JSON Object Mode is more reliable for this model than strict
             # server-side schema generation. The response is still validated
             # against our exact local contract before any email can be sent.
-            response = client.chat.completions.create(
+            response = _create_completion(
+                client,
                 **request_options,
                 response_format={"type": "json_object"},
             )
@@ -262,7 +341,7 @@ def evaluate_job_relevance(job_details, role):
             if getattr(json_mode_exc, "status_code", None) != 400:
                 raise
             print("  [AI] JSON mode failed; retrying plain completion...")
-            response = client.chat.completions.create(**request_options)
+            response = _create_completion(client, **request_options)
 
         return _parse_response(response, recruiter_emails)
 
@@ -271,7 +350,15 @@ def evaluate_job_relevance(job_details, role):
         status_code = getattr(exc, "status_code", None)
 
         if status_code == 429 or error_name == "RateLimitError":
-            detail = "rate limit reached"
+            wait_seconds = _rate_limit_wait_seconds(exc)
+            _RATE_LIMITED_UNTIL = max(
+                _RATE_LIMITED_UNTIL,
+                time.monotonic() + wait_seconds,
+            )
+            detail = (
+                f"rate limit reached; next AI request will wait "
+                f"{wait_seconds:.0f} seconds"
+            )
         elif "Timeout" in error_name:
             detail = "request timed out"
         elif status_code == 404:

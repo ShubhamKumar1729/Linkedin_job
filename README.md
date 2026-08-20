@@ -51,7 +51,10 @@ GROQ_MAX_COMPLETION_TOKENS=1000
 MAX_EXPERIENCE_YEARS=5
 MAX_EMAILS_PER_RUN=50
 TARGET_EMAILS_PER_ROLE=3
-MAX_PASSES_PER_ROLE=5
+MAX_PASSES_PER_ROLE=3
+DELAY_BETWEEN_AI_REQUESTS=15
+GROQ_RATE_LIMIT_COOLDOWN_SECONDS=60
+GROQ_MAX_RATE_LIMIT_WAIT_SECONDS=300
 MAX_EMAILS_PER_POST=5
 MAX_JOB_DESCRIPTION_CHARS=12000
 ```
@@ -69,6 +72,11 @@ LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 until three quality applications are sent or `MAX_PASSES_PER_ROLE` is reached.
 Only successful Groq-approved sends count. This improves coverage but cannot
 guarantee three when the past-24-hour results contain fewer qualifying posts.
+
+AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If Groq returns HTTP
+429, response reset headers (or `GROQ_RATE_LIMIT_COOLDOWN_SECONDS`) delay the
+next unique request. Failed checks are cached for the rest of the run so later
+scroll passes do not repeatedly call Groq for the same post.
 
 `MAX_EMAILS_PER_POST` and `MAX_JOB_DESCRIPTION_CHARS` are technical DOM guards:
 they reject accidental LinkedIn parent containers that combine many unrelated

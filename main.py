@@ -206,13 +206,20 @@ def process_role(page, role, resume_path, sent_before_role):
                 # Groq only decides relevance and which supplied recruiter
                 # emails genuinely belong to this opening. It never sends.
                 if ai_cache_key in ai_results_by_post:
-                    print("       [AI] Reusing this run's previous decision")
                     ai_result = ai_results_by_post[ai_cache_key]
+                    if ai_result is None:
+                        print(
+                            "       [AI] Previous AI attempt failed; "
+                            "not retrying this post"
+                        )
+                    else:
+                        print("       [AI] Reusing this run's previous decision")
                 else:
                     print("       [AI] Sending complete job data to Groq...")
                     ai_result = evaluate_job_relevance(job_details, role)
-                    if ai_result is not None:
-                        ai_results_by_post[ai_cache_key] = ai_result
+                    # Cache failures too, otherwise every scroll pass hammers
+                    # the same rate-limited post again.
+                    ai_results_by_post[ai_cache_key] = ai_result
 
                 if ai_result is None:
                     print("       [SKIP] Job skipped safely after AI failure")
