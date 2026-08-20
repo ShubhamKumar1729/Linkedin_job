@@ -18,6 +18,7 @@ from config.settings import (
     GROQ_RATE_LIMIT_COOLDOWN_SECONDS,
     GROQ_TIMEOUT_SECONDS,
     MAX_EXPERIENCE_YEARS,
+    RECRUITER_POLICY,
     ROLES,
 )
 from utils.helpers import normalize_email
@@ -32,14 +33,15 @@ Return exactly one JSON object with this schema:
   "relevant": true or false,
   "score": an integer from 0 to 100,
   "reason": "a short factual explanation",
+  "recruiter_type": "direct_employer, staffing_agency, or unclear",
+  "employer": "the named end-employer, or an empty string",
   "approved_emails": ["email addresses from job.recruiter_emails"]
 }
 
-Never invent an email address. approved_emails may contain only addresses from
-job.recruiter_emails that are clearly presented in the post as contacts for
-that specific opening. Exclude unrelated, advertising, licensing, support,
-training, fake, or suspicious addresses. When relevant is false,
-approved_emails must be empty.
+Never invent an employer or email address. approved_emails may contain only
+addresses from job.recruiter_emails that are clearly presented as application
+contacts for that specific opening. When relevant is false, approved_emails
+must be empty.
 """
 
 ROLE_LOCATION_PROMPT = """Decision policy: ROLE + USA + CANDIDATE BASICS + RECRUITER.
@@ -80,6 +82,32 @@ STRICT_PROMPT = """Decision policy: STRICT CANDIDATE FIT.
 Require a genuine recruiter contact and a strong match across target role, US
 location, candidate skills, experience, work authorization, and explicit job
 requirements. Do not invent missing qualifications.
+"""
+
+DIRECT_EMPLOYER_PROMPT = """Recruiter policy: DIRECT EMPLOYER ONLY.
+A relevant result additionally requires a named end-employer and an in-house
+technology recruiter, hiring manager, or official corporate application
+contact representing that same employer. The approved email should use the
+employer's corporate domain or a clearly official employer-controlled hiring
+address.
+
+Always set relevant=false and recruiter_type=staffing_agency for any staffing,
+recruiting, placement, talent-supplier, consultancy/vendor, implementation
+partner, C2C vendor-network, bench-sales, OPT-placement, résumé-marketing, or
+third-party recruiting company—even when it advertises a specific job. Reject
+personal Gmail/Yahoo/Outlook-style contacts and posts where the end-employer or
+recruiter's direct relationship to that employer is unclear. Generic job
+alerts and résumé collection posts also fail. Do not approve an agency merely
+because it calls its contact a recruiter.
+
+Only recruiter_type=direct_employer may ever return relevant=true.
+"""
+
+REAL_REQUISITION_PROMPT = """Recruiter policy: REAL REQUISITION.
+Direct employers are preferred. A third-party recruiter may pass only for a
+specific active requisition with a named client/employer, concrete job details,
+and an application email explicitly tied to that requisition. Generic staffing,
+bench-sales, hotlist, placement, partnership, and résumé-collection posts fail.
 """
 
 _LAST_REQUEST_STARTED = 0.0
@@ -194,6 +222,8 @@ def _validate_result(raw_result, allowed_emails):
     relevant = raw_result.get("relevant")
     score = raw_result.get("score")
     reason = raw_result.get("reason")
+    recruiter_type = raw_result.get("recruiter_type")
+    employer = raw_result.get("employer")
     approved_emails = raw_result.get("approved_emails")
 
     if not isinstance(relevant, bool):
@@ -204,6 +234,10 @@ def _validate_result(raw_result, allowed_emails):
         raise ValueError("'score' must be between 0 and 100")
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("'reason' must be a non-empty string")
+    if recruiter_type not in {"direct_employer", "staffing_agency", "unclear"}:
+        raise ValueError("'recruiter_type' is invalid")
+    if not isinstance(employer, str):
+        raise ValueError("'employer' must be a string")
     if not isinstance(approved_emails, list):
         raise ValueError("'approved_emails' must be a list")
 
@@ -222,6 +256,23 @@ def _validate_result(raw_result, allowed_emails):
         raise ValueError("relevant response has no approved recruiter email")
     if not relevant and normalized_approved:
         raise ValueError("irrelevant response contains approved emails")
+    if relevant and recruiter_type == "unclear":
+        raise ValueError("relevant response has an unclear recruiter type")
+
+    if relevant and RECRUITER_POLICY == "direct_employer_only":
+        if recruiter_type != "direct_employer":
+            raise ValueError("staffing/third-party recruiter cannot be approved")
+        if not employer.strip():
+            raise ValueError("direct-employer response has no named employer")
+        personal_domains = {
+            "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
+            "aol.com", "icloud.com", "proton.me", "protonmail.com",
+        }
+        if any(
+            email.rsplit("@", 1)[-1] in personal_domains
+            for email in normalized_approved
+        ):
+            raise ValueError("direct-employer contact uses a personal domain")
 
     normalized_score = float(score)
     if normalized_score.is_integer():
@@ -231,6 +282,8 @@ def _validate_result(raw_result, allowed_emails):
         "relevant": relevant,
         "score": normalized_score,
         "reason": reason.strip(),
+        "recruiter_type": recruiter_type,
+        "employer": employer.strip(),
         "approved_emails": normalized_approved,
     }
 
@@ -296,17 +349,29 @@ def evaluate_job_relevance(job_details, role):
         if AI_MATCH_MODE == "role_location"
         else STRICT_PROMPT
     )
+    recruiter_policy_prompt = (
+        DIRECT_EMPLOYER_PROMPT
+        if RECRUITER_POLICY == "direct_employer_only"
+        else REAL_REQUISITION_PROMPT
+    )
     payload = {
         "job": job_details,
         "candidate": _candidate_payload(role),
         "match_mode": AI_MATCH_MODE,
+        "recruiter_policy": RECRUITER_POLICY,
         "decision_threshold": AI_RELEVANCE_THRESHOLD,
     }
 
     messages = [
         {
             "role": "system",
-            "content": SYSTEM_PROMPT + "\n\n" + policy_prompt,
+            "content": (
+                SYSTEM_PROMPT
+                + "\n\n"
+                + policy_prompt
+                + "\n\n"
+                + recruiter_policy_prompt
+            ),
         },
         {
             "role": "user",

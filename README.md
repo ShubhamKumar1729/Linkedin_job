@@ -15,7 +15,7 @@ Groq to evaluate candidate/job relevance before sending an application email.
 5. Send the complete job description, target role, candidate details, and
    extracted recruiter emails to Groq for the relevance decision.
 6. Groq rejects wrong roles, non-US jobs, excessive experience, incompatible
-   work authorization, bench sales/training, and suspicious contacts.
+   work authorization, and every staffing/third-party recruiting contact.
 7. Send only when Groq returns `relevant: true`, its score meets
    `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
 8. Scan all configured passes for every role and stop only at the run-wide
@@ -45,6 +45,7 @@ GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=openai/gpt-oss-120b
 AI_RELEVANCE_THRESHOLD=70
 AI_MATCH_MODE=role_location
+RECRUITER_POLICY=direct_employer_only
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_RETRIES=2
 GROQ_MAX_COMPLETION_TOKENS=1000
@@ -64,6 +65,12 @@ location, a genuine application contact, candidate work authorization, and the
 configured experience ceiling. With `MAX_EXPERIENCE_YEARS=5`, explicit job
 requirements of 1-5 years may pass while 10-12 years are rejected. Candidate
 skills are supplied for context but individual tool gaps are not a hard gate.
+
+`RECRUITER_POLICY=direct_employer_only` rejects all staffing, placement,
+consulting/vendor, third-party recruiting, OPT marketing, and résumé collection
+companies. Approval requires a named end-employer plus an in-house recruiter,
+hiring manager, or official corporate application email. Personal email-domain
+contacts are rejected under this policy.
 
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.

@@ -101,7 +101,7 @@ Please find my submission details below for your review:
 \u2022 Rate / Compensation: {CANDIDATE['rate']}
 \u2022 LinkedIn Profile:    {CANDIDATE['linkedin']}
 
-I have attached my updated resume for your review. Are you available for a brief call sometime this week to discuss this position? Thank you for your time and consideration; I look forward to hearing from you.
+I have attached my updated resume for your review. Could you please confirm the compensation or rate range, employment type, and expected interview process and timeline for this opening? I am available for a brief discussion at your convenience. Thank you for your time and consideration; I look forward to hearing from you.
 
 Best regards,
 {CANDIDATE['name']}

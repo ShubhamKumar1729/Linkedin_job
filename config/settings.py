@@ -48,6 +48,13 @@ AI_MATCH_MODE            = os.getenv(
 ).strip().lower()
 if AI_MATCH_MODE not in {"role_location", "strict"}:
     raise ValueError("AI_MATCH_MODE must be 'role_location' or 'strict'")
+RECRUITER_POLICY         = os.getenv(
+    "RECRUITER_POLICY", "direct_employer_only"
+).strip().lower()
+if RECRUITER_POLICY not in {"direct_employer_only", "real_requisition"}:
+    raise ValueError(
+        "RECRUITER_POLICY must be 'direct_employer_only' or 'real_requisition'"
+    )
 GROQ_TIMEOUT_SECONDS     = _env_int(
     "GROQ_TIMEOUT_SECONDS", 30, minimum=1
 )

@@ -10,6 +10,7 @@ from config.settings import (
     GROQ_API_KEY,
     GROQ_MODEL,
     AI_MATCH_MODE,
+    RECRUITER_POLICY,
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
     MIN_QUALITY_EMAILS_PER_ROLE,
@@ -54,6 +55,7 @@ def print_banner():
     print(f"  🔄 Passes/Role : up to {MAX_PASSES_PER_ROLE}")
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
     print(f"  🧭 Match Mode  : {AI_MATCH_MODE}")
+    print(f"  🏢 Recruiters  : {RECRUITER_POLICY}")
     print(f"  🧑 Experience  : jobs requiring up to {MAX_EXPERIENCE_YEARS} years")
     print(f"  ✅ AI Threshold: {AI_RELEVANCE_THRESHOLD}")
     print(f"  ⏳ Wait/Role   : "
@@ -234,6 +236,11 @@ def process_role(page, role, resume_path, sent_before_role):
 
                 print(f"       [AI] Relevance score: {score}")
                 print(f"       [AI] Decision: {decision}")
+                print(f"       [AI] Recruiter type: {ai_result['recruiter_type']}")
+                print(
+                    f"       [AI] Employer: "
+                    f"{ai_result['employer'] or 'Not verified'}"
+                )
                 print(f"       [AI] Reason: {ai_result['reason']}")
 
                 if not ai_approved:
