@@ -18,8 +18,8 @@ Groq to evaluate candidate/job relevance before sending an application email.
    work authorization, and every staffing/third-party recruiting contact.
 7. Send only when Groq returns `relevant: true`, its score meets
    `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
-8. Scan all configured passes for every role and stop only at the run-wide
-   successful-send limit. Per-role minimums are reported but never cap sends.
+8. Keep scrolling a role until at least one quality send is made or repeated
+   scrolls load no new Past-24-Hours posts; retain a run-wide send limit.
 
 Groq only evaluates relevance. Email generation, sending, and sent-application
 tracking remain local to this project.
@@ -51,8 +51,9 @@ GROQ_MAX_RETRIES=2
 GROQ_MAX_COMPLETION_TOKENS=1000
 MAX_EXPERIENCE_YEARS=5
 MAX_EMAILS_PER_RUN=100
-MIN_QUALITY_EMAILS_PER_ROLE=3
-MAX_PASSES_PER_ROLE=3
+MIN_QUALITY_EMAILS_PER_ROLE=1
+MAX_PASSES_PER_ROLE=12
+NO_NEW_POST_PASSES=2
 DELAY_BETWEEN_AI_REQUESTS=15
 GROQ_RATE_LIMIT_COOLDOWN_SECONDS=60
 GROQ_MAX_RATE_LIMIT_WAIT_SECONDS=300
@@ -75,10 +76,10 @@ contacts are rejected under this policy.
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.
 
-`MIN_QUALITY_EMAILS_PER_ROLE=3` is a reporting goal, not a cap. The bot scans
-all configured passes and sends every Groq-approved quality application until
-`MAX_EMAILS_PER_RUN` is reached. It can send more than three for one role, but
-cannot guarantee three when the past-24-hour results contain fewer matches.
+`MIN_QUALITY_EMAILS_PER_ROLE=1` keeps a role active until the current loaded
+batch produces at least one quality send, or two consecutive scroll passes load
+no new Past-24-Hours cards. All quality matches in the successful pass can be
+sent. `MAX_PASSES_PER_ROLE` is only an infinite-scroll safety ceiling.
 
 AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If Groq returns HTTP
 429, response reset headers (or `GROQ_RATE_LIMIT_COOLDOWN_SECONDS`) delay the

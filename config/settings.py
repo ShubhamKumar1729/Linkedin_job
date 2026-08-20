@@ -109,12 +109,15 @@ MAX_EMAILS_PER_RUN       = _env_int(
 )
 # TARGET_EMAILS_PER_ROLE remains a backwards-compatible fallback. This is a
 # minimum reporting goal, not a cap; quality sends continue up to the run limit.
-_legacy_role_target      = os.getenv("TARGET_EMAILS_PER_ROLE", "3")
+_legacy_role_target      = os.getenv("TARGET_EMAILS_PER_ROLE", "1")
 MIN_QUALITY_EMAILS_PER_ROLE = _env_int(
     "MIN_QUALITY_EMAILS_PER_ROLE", _legacy_role_target, minimum=1
 )
 MAX_PASSES_PER_ROLE      = _env_int(
-    "MAX_PASSES_PER_ROLE", 3, minimum=1, maximum=20
+    "MAX_PASSES_PER_ROLE", 12, minimum=1, maximum=50
+)
+NO_NEW_POST_PASSES       = _env_int(
+    "NO_NEW_POST_PASSES", 2, minimum=1, maximum=10
 )
 MAX_EMAILS_PER_POST      = _env_int("MAX_EMAILS_PER_POST", 5, minimum=1)
 MAX_JOB_DESCRIPTION_CHARS = _env_int(

@@ -15,6 +15,7 @@ from config.settings import (
     MAX_EMAILS_PER_RUN,
     MIN_QUALITY_EMAILS_PER_ROLE,
     MAX_PASSES_PER_ROLE,
+    NO_NEW_POST_PASSES,
     MAX_EMAILS_PER_POST,
     MAX_EXPERIENCE_YEARS,
     MAX_JOB_DESCRIPTION_CHARS,
@@ -52,7 +53,10 @@ def print_banner():
         f"  🎯 Minimum/Role: {MIN_QUALITY_EMAILS_PER_ROLE} quality emails "
         "(not a cap)"
     )
-    print(f"  🔄 Passes/Role : up to {MAX_PASSES_PER_ROLE}")
+    print(
+        f"  🔄 Search/Role : until minimum or {NO_NEW_POST_PASSES} "
+        f"no-new passes (safety max {MAX_PASSES_PER_ROLE})"
+    )
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
     print(f"  🧭 Match Mode  : {AI_MATCH_MODE}")
     print(f"  🏢 Recruiters  : {RECRUITER_POLICY}")
@@ -106,6 +110,10 @@ def process_role(page, role, resume_path, sent_before_role):
     """
     role_sent = 0
     ai_results_by_post = {}
+    seen_card_keys = set()
+    seen_post_links = set()
+    link_failure_counts = {}
+    no_new_post_passes = 0
 
     # ── Auto Search + Filter ───────────────────────────────
     search_and_filter(page, role)
@@ -119,12 +127,37 @@ def process_role(page, role, resume_path, sent_before_role):
             break
 
         cards = get_cards(page)
-        print(f"\n  📋 Pass {pass_num} - Posts found: {len(cards)}")
+        new_cards = []
+        for card in cards:
+            try:
+                card_text = clean(card.inner_text(timeout=2000))
+                card_key = card_text[:700]
+                if not card_key or card_key in seen_card_keys:
+                    continue
+                seen_card_keys.add(card_key)
+                new_cards.append((card, card_text, card_key))
+            except Exception:
+                pass
+
+        if new_cards:
+            no_new_post_passes = 0
+        else:
+            no_new_post_passes += 1
+
+        print(
+            f"\n  📋 Pass {pass_num} - Visible: {len(cards)} | "
+            f"New: {len(new_cards)}"
+        )
 
         if not cards:
             print("  [SKIP] No posts with recruiter emails visible.\n")
+        elif not new_cards:
+            print(
+                f"  [SEARCH] No new posts loaded "
+                f"({no_new_post_passes}/{NO_NEW_POST_PASSES}).\n"
+            )
 
-        for idx, card in enumerate(cards, start=1):
+        for idx, (card, post_text, card_key) in enumerate(new_cards, start=1):
 
             if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
                 print(
@@ -134,7 +167,6 @@ def process_role(page, role, resume_path, sent_before_role):
                 break
 
             try:
-                post_text = clean(card.inner_text(timeout=2000))
                 if not post_text:
                     print(f"  {idx:>3}. [SKIP] Missing job description")
                     continue
@@ -174,8 +206,19 @@ def process_role(page, role, resume_path, sent_before_role):
 
                 post_link = get_post_link_from_card(page, card)
                 if not post_link:
+                    failures = link_failure_counts.get(card_key, 0) + 1
+                    link_failure_counts[card_key] = failures
+                    if failures < 2:
+                        # Give LinkedIn one later pass to finish rendering the
+                        # card's permalink/URN without treating it as new data.
+                        seen_card_keys.discard(card_key)
                     print("       [SKIP] Missing or invalid LinkedIn post link")
                     continue
+
+                if post_link in seen_post_links:
+                    print("       [SKIP] Post already processed in this role")
+                    continue
+                seen_post_links.add(post_link)
 
                 # Avoid an unnecessary AI request when every email/post pair
                 # has already been recorded by the existing CSV tracker.
@@ -288,12 +331,29 @@ def process_role(page, role, resume_path, sent_before_role):
                 print(f"  {idx:>3}. [ERROR] Job processing failed: {e}")
                 print("       [SKIP] Job skipped safely")
 
-        # Continue through all configured passes. The per-role number is a
-        # minimum goal only; it never caps additional quality applications.
-        if (
-            pass_num < MAX_PASSES_PER_ROLE
-            and sent_before_role + role_sent < MAX_EMAILS_PER_RUN
-        ):
+        if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
+            break
+
+        # Once the minimum is achieved, finish the current loaded batch and
+        # move to the next role. This can still send multiple quality emails
+        # from the same pass.
+        if role_sent >= MIN_QUALITY_EMAILS_PER_ROLE:
+            print(
+                f"\n  [SEARCH] Minimum achieved for {role['name']}; "
+                "moving to the next role."
+            )
+            break
+
+        # Two consecutive passes without a new card are treated as exhaustion
+        # of the currently available Past-24-Hours result set.
+        if no_new_post_passes >= NO_NEW_POST_PASSES:
+            print(
+                f"\n  [SEARCH] No new Past-24-Hours posts after "
+                f"{no_new_post_passes} passes; role results exhausted."
+            )
+            break
+
+        if pass_num < MAX_PASSES_PER_ROLE:
             print(
                 f"\n  📜 Scrolling for more posts "
                 f"({role_sent} quality sends so far; minimum goal "
@@ -305,12 +365,12 @@ def process_role(page, role, resume_path, sent_before_role):
         goal_status = (
             "minimum achieved"
             if role_sent >= MIN_QUALITY_EMAILS_PER_ROLE
-            else "below minimum"
+            else "results exhausted before minimum"
         )
         print(
             f"\n  [STATS] {role['name']}: {role_sent} quality emails "
             f"({goal_status}; goal {MIN_QUALITY_EMAILS_PER_ROLE}) after "
-            f"{MAX_PASSES_PER_ROLE} passes"
+            f"{pass_num} passes"
         )
 
     return role_sent

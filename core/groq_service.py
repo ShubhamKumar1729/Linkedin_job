@@ -94,11 +94,17 @@ address.
 Always set relevant=false and recruiter_type=staffing_agency for any staffing,
 recruiting, placement, talent-supplier, consultancy/vendor, implementation
 partner, C2C vendor-network, bench-sales, OPT-placement, résumé-marketing, or
-third-party recruiting company—even when it advertises a specific job. Reject
-personal Gmail/Yahoo/Outlook-style contacts and posts where the end-employer or
-recruiter's direct relationship to that employer is unclear. Generic job
+third-party recruiting company—even when it advertises a specific job. Signals
+such as "client", "implementation partner", "vendor", "submit profiles",
+"C2C requirement", or multiple unrelated openings strongly indicate an agency.
+
+A corporate-looking email domain alone is not proof of direct employment. Do
+not infer that the email-domain company is the end-employer. The post must
+explicitly establish that the named company is hiring for its own internal team
+or link the contact to that company's official hiring process. Reject personal
+Gmail/Yahoo/Outlook-style contacts and any unclear relationship. Generic job
 alerts and résumé collection posts also fail. Do not approve an agency merely
-because it calls its contact a recruiter.
+because it calls its contact a recruiter or uses a corporate domain.
 
 Only recruiter_type=direct_employer may ever return relevant=true.
 """
