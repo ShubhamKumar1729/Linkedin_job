@@ -1,0 +1,4 @@
+playwright
+yagmail
+pandas
+python-dotenv

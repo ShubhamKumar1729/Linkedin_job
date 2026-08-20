@@ -1,0 +1,118 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ── Paths ──────────────────────────────────────────────────
+BASE_DIR    = Path(__file__).parent.parent
+OUTPUT_DIR  = BASE_DIR / "output"
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+SENT_FILE    = OUTPUT_DIR / "sent_emails.csv"
+PROFILE_DIR  = str(BASE_DIR / "linkedin_profile_data")
+
+RESUME_FILENAME = os.getenv("RESUME_FILENAME", "resume.pdf").strip()
+RESUME_PATH     = OUTPUT_DIR / RESUME_FILENAME
+
+# ── Gmail Credentials ──────────────────────────────────────
+GMAIL_ID           = os.getenv("GMAIL_ID", "").strip()
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
+
+# ── Candidate Info ─────────────────────────────────────────
+CANDIDATE = {
+    "name":         os.getenv("CANDIDATE_NAME",         "").strip(),
+    "email":        os.getenv("CANDIDATE_EMAIL",        "").strip(),
+    "phone":        os.getenv("CANDIDATE_PHONE",        "").strip(),
+    "linkedin":     os.getenv("CANDIDATE_LINKEDIN",     "").strip(),
+    "location":     os.getenv("CANDIDATE_LOCATION",     "").strip(),
+    "relocation":   os.getenv("CANDIDATE_RELOCATION",   "").strip(),
+    "work_auth":    os.getenv("CANDIDATE_WORK_AUTH",    "").strip(),
+    "availability": os.getenv("CANDIDATE_AVAILABILITY", "").strip(),
+    "experience":   os.getenv("CANDIDATE_EXPERIENCE",   "").strip(),
+    "rate":         os.getenv("CANDIDATE_RATE",         "").strip(),
+}
+
+# ── CC / BCC ───────────────────────────────────────────────
+def _parse_list(key):
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return []
+    return [e.strip() for e in raw.split(",") if e.strip()]
+
+CC_EMAILS  = _parse_list("CC_EMAILS")
+BCC_EMAILS = _parse_list("BCC_EMAILS")
+
+# ── Bot Settings ───────────────────────────────────────────
+MAX_EMAILS_PER_ROLE    = int(os.getenv("MAX_EMAILS_PER_ROLE",    "15"))
+DELAY_BETWEEN_EMAILS   = int(os.getenv("DELAY_BETWEEN_EMAILS",   "12"))
+SCROLL_ROUNDS          = int(os.getenv("SCROLL_ROUNDS",          "8"))
+WAIT_BETWEEN_ROLES_MIN = int(os.getenv("WAIT_BETWEEN_ROLES_MIN", "60"))
+WAIT_BETWEEN_ROLES_MAX = int(os.getenv("WAIT_BETWEEN_ROLES_MAX", "120"))
+
+# ── Email Filtering ────────────────────────────────────────
+BAD_EMAIL_PREFIXES = {
+    "noreply", "no-reply", "donotreply", "do-not-reply",
+    "admin", "support", "help", "info", "contact",
+    "sales", "marketing", "privacy", "security",
+    "abuse", "postmaster", "mailer-daemon",
+}
+
+BAD_EMAIL_DOMAINS = {
+    "linkedin.com",
+    "example.com",
+    "test.com",
+}
+
+# ── Bench Sales Block ──────────────────────────────────────
+BENCHSALES_BLOCK_KEYWORDS = [
+    "bench sales",
+    "benchsales",
+    "bench-sale",
+    "bench_sale",
+    "benchsales recruiter",
+    "bench sales recruiter",
+]
+
+BENCHSALES_BLOCK_PATTERNS = [
+    r"\bbench\s*sales\b",
+    r"\bbench[-_\s]*sales\b",
+    r"\bbenchsales\b",
+]
+
+# ── Job Signal Keywords ────────────────────────────────────
+JOB_REQUIREMENT_KEYWORDS = [
+    "hiring", "we are hiring", "now hiring",
+    "job opening", "opening", "open role",
+    "requirement", "urgent requirement",
+    "position", "role", "opportunity",
+    "looking for", "need", "needed", "required",
+    "contract", "fulltime", "full time",
+    "w2", "c2c", "onsite", "remote", "hybrid",
+    "job description", "jd",
+    "data operations", "data analyst", "data engineer",
+    "business analyst", "project coordinator",
+    "system analyst", "scrum master", "iam analyst",
+    "etl", "azure", "sql", "cloud", "agile", "scrum",
+]
+
+# ── Load Roles From .env ───────────────────────────────────
+def load_roles():
+    roles = []
+    i = 1
+    while True:
+        name   = os.getenv(f"ROLE_{i}_NAME",   "").strip()
+        skills = os.getenv(f"ROLE_{i}_SKILLS", "").strip()
+        search = os.getenv(f"ROLE_{i}_SEARCH", "").strip()
+        if not name:
+            break
+        roles.append({
+            "index":  i,
+            "name":   name,
+            "skills": skills,
+            "search": search,
+        })
+        i += 1
+    return roles
+
+ROLES = load_roles()
