@@ -124,7 +124,13 @@ def process_role(page, role, resume_path, sent_before_role):
         if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
             break
 
+        print(f"\n  [SEARCH] Collecting post cards for pass {pass_num}...")
+        scan_started = time.monotonic()
         cards = get_cards(page)
+        print(
+            f"  [SEARCH] Card scan completed in "
+            f"{time.monotonic() - scan_started:.1f}s"
+        )
         new_cards = []
         for card in cards:
             try:
@@ -372,6 +378,7 @@ def process_role(page, role, resume_path, sent_before_role):
                 f"{role_sent} quality sent)..."
             )
             scroll_page(page, rounds=SCROLL_ROUNDS)
+            print("  [SEARCH] Scroll complete; scanning newly loaded posts...")
 
     if sent_before_role + role_sent < MAX_EMAILS_PER_RUN:
         if len(unique_emails_explored) >= UNIQUE_EMAILS_PER_ROLE:

@@ -1,5 +1,6 @@
 import re
 from urllib.parse import urljoin
+from config.settings import MAX_EMAILS_PER_POST, MAX_JOB_DESCRIPTION_CHARS
 from utils.helpers import clean, extract_emails, normalize_post_link
 
 JUNK_PHRASES = [
@@ -10,13 +11,22 @@ JUNK_PHRASES = [
     "content type",
 ]
 
+POST_LINK_CARD_SELECTOR = (
+    "main div:has(a[href*='/posts/']), "
+    "main div:has(a[href*='/feed/update/'])"
+)
+
 CARD_SELECTORS = [
     "div.feed-shared-update-v2",
     "li.reusable-search__result-container",
     "div[data-urn]",
     "article",
-    "main div",
+    POST_LINK_CARD_SELECTOR,
 ]
+
+EMAIL_TEXT_PATTERN = re.compile(
+    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
+)
 
 
 def _extract_labeled_value(text, labels):
@@ -246,44 +256,45 @@ def get_cards(page):
         pass
 
     cards = []
+    seen = set()
 
+    # Read candidate text in bulk. The previous `main div` fallback called
+    # inner_text() separately on thousands of nested elements as the page grew,
+    # which could make later scroll passes appear frozen for several minutes.
     for selector in CARD_SELECTORS:
         try:
-            found = page.locator(selector).all()
-            for card in found:
-                try:
-                    text = clean(card.inner_text(timeout=1000))
+            locator = page.locator(selector)
+            if selector == POST_LINK_CARD_SELECTOR:
+                locator = locator.filter(has_text=EMAIL_TEXT_PATTERN)
 
-                    # Skip short or empty cards
-                    if len(text) < 40:
-                        continue
+            texts = locator.all_inner_texts()
+            for index, raw_text in enumerate(texts):
+                text = clean(raw_text)
 
-                    # Must have at least one email
-                    if not extract_emails(text):
-                        continue
+                if len(text) < 40:
+                    continue
 
-                    # Skip navigation / UI junk
-                    low = text.lower()
-                    if any(j in low for j in JUNK_PHRASES):
-                        continue
+                # These are parent-page containers combining unrelated posts,
+                # not complete individual job descriptions.
+                if len(text) > MAX_JOB_DESCRIPTION_CHARS:
+                    continue
 
-                    cards.append(card)
+                emails = extract_emails(text)
+                if not emails or len(emails) > MAX_EMAILS_PER_POST:
+                    continue
 
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                low = text.lower()
+                if any(j in low for j in JUNK_PHRASES):
+                    continue
 
-    # Deduplicate by first 700 chars of text
-    unique = []
-    seen   = set()
-    for card in cards:
-        try:
-            key = clean(card.inner_text(timeout=800))[:700]
-            if key not in seen:
+                key = text[:700]
+                if key in seen:
+                    continue
+
                 seen.add(key)
-                unique.append(card)
+                cards.append(locator.nth(index))
+
         except Exception:
             pass
 
-    return unique
+    return cards
