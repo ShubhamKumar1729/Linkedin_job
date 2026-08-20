@@ -35,7 +35,7 @@ def normalize_post_link(raw_link):
     link = link.replace("%3A", ":").replace("%3a", ":")
     link = link.replace("%2F", "/").replace("%2f", "/")
 
-    m = re.search(r"urn:li:activity:\d+", link)
+    m = re.search(r"urn:li:(?:activity|ugcPost):\d+", link)
     if m:
         return f"https://www.linkedin.com/feed/update/{m.group(0)}/"
 

@@ -1,5 +1,5 @@
 import time
-from config.settings import PROFILE_DIR, SCROLL_ROUNDS
+from config.settings import AUTO_BUILD_ROLE_SEARCH, PROFILE_DIR, SCROLL_ROUNDS
 
 
 def launch_browser(playwright):
@@ -56,8 +56,19 @@ def search_and_filter(page, role):
     2. Filter by Posts tab
     3. Apply Past 24 Hours filter
     """
-    search_query = role["search"]
-    print(f"\n  🔍 Auto searching: {search_query}")
+    configured_query = role["search"]
+    if AUTO_BUILD_ROLE_SEARCH:
+        role_name = role["name"]
+        search_query = (
+            f'"{role_name}" AND '
+            '("United States" OR USA OR "US Remote" OR W2 OR C2C) '
+            'NOT ("bench sales" OR benchsales OR hotlist OR training)'
+        )
+        print(f"\n  🔍 Configured search: {configured_query}")
+        print(f"  🎯 Targeted search  : {search_query}")
+    else:
+        search_query = configured_query
+        print(f"\n  🔍 Auto searching: {search_query}")
 
     # ── Step 1: Use URL to search directly ────────────────
     # This is most reliable way - bypass search bar issues

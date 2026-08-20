@@ -47,12 +47,17 @@ AI_MATCH_MODE=role_location
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_RETRIES=2
 MAX_EMAILS_PER_RUN=50
+AUTO_BUILD_ROLE_SEARCH=true
 ```
 
 `AI_MATCH_MODE=role_location` ignores skills and experience as decision gates;
 it checks target-role alignment, explicit US location, and whether each email
 is presented as a recruiter/application contact for that opening. Use `strict`
 only when skills and experience should also gate applications.
+
+`AUTO_BUILD_ROLE_SEARCH=true` replaces noisy raw role searches at runtime with
+a quoted target-role + USA Boolean query while retaining each configured role
+name. Set it to `false` only to use `ROLE_N_SEARCH` exactly as written.
 
 `MAX_EMAILS_PER_ROLE` is accepted only as a backwards-compatible fallback when
 `MAX_EMAILS_PER_RUN` is not present. New configurations should use

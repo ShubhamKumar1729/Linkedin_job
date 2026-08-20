@@ -43,6 +43,9 @@ def extract_job_details(post_text, role):
         post_text,
         ["job title", "position title", "position", "role"],
     )
+    if job_title and not re.search(r"[A-Za-z]{2,}", job_title):
+        job_title = ""
+
     company = _extract_labeled_value(
         post_text,
         ["company", "client", "end client"],
@@ -133,6 +136,36 @@ def get_post_link_from_card(page, card):
     Method 1: scan anchor hrefs inside the card
     Method 2: click more options button and copy link
     """
+
+    # Method 0 - activity URN on the card, its nearby wrapper, or child.
+    try:
+        raw_urn = card.evaluate("""
+            el => {
+                const attrs = ['data-urn', 'data-id', 'data-activity-urn'];
+                let current = el;
+                while (current && current !== document.body) {
+                    for (const attr of attrs) {
+                        const value = current.getAttribute?.(attr) || '';
+                        if (value.includes('activity:') || value.includes('ugcPost:')) {
+                            return value;
+                        }
+                    }
+                    current = current.parentElement;
+                }
+                const nested = el.querySelector(
+                    "[data-urn*='activity:'], [data-id*='activity:'], " +
+                    "[data-urn*='ugcPost:'], [data-id*='ugcPost:']"
+                );
+                if (!nested) return '';
+                return attrs.map(attr => nested.getAttribute(attr) || '')
+                    .find(Boolean) || '';
+            }
+        """)
+        fixed = normalize_post_link(raw_urn)
+        if fixed:
+            return fixed
+    except Exception:
+        pass
 
     # Method 1 - href scan
     try:

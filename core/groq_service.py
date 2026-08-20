@@ -57,6 +57,36 @@ location, candidate skills, experience, work authorization, and explicit job
 requirements. Do not invent missing qualifications.
 """
 
+JSON_SCHEMA_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "job_relevance_decision",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "relevant": {"type": "boolean"},
+                "score": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                },
+                "reason": {"type": "string"},
+                "approved_emails": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": [
+                "relevant",
+                "score",
+                "reason",
+                "approved_emails",
+            ],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 @lru_cache(maxsize=1)
 def _get_client():
@@ -201,55 +231,45 @@ def evaluate_job_relevance(job_details, role):
         "decision_threshold": AI_RELEVANCE_THRESHOLD,
     }
 
+    messages = [
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT + "\n\n" + policy_prompt,
+        },
+        {
+            "role": "user",
+            "content": (
+                "Evaluate this hiring post. Return JSON only.\n\n"
+                + json.dumps(payload, ensure_ascii=False)
+            ),
+        },
+    ]
+    request_options = {
+        "model": GROQ_MODEL,
+        "messages": messages,
+        "temperature": 0,
+        "max_tokens": 300,
+    }
+
     try:
         client = _get_client()
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT + "\n\n" + policy_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Evaluate this hiring post. Return JSON only.\n\n"
-                        + json.dumps(payload, ensure_ascii=False)
-                    ),
-                },
-            ],
-            temperature=0,
-            max_tokens=300,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "job_relevance_decision",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "relevant": {"type": "boolean"},
-                            "score": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 100,
-                            },
-                            "reason": {"type": "string"},
-                            "approved_emails": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                            },
-                        },
-                        "required": [
-                            "relevant",
-                            "score",
-                            "reason",
-                            "approved_emails",
-                        ],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-        )
+        try:
+            response = client.chat.completions.create(
+                **request_options,
+                response_format=JSON_SCHEMA_RESPONSE_FORMAT,
+            )
+        except Exception as schema_exc:
+            # Groq can intermittently return HTTP 400 when a model fails to
+            # satisfy strict JSON Schema generation. Retry once in JSON Object
+            # Mode, then run the same local validation before any email sends.
+            if getattr(schema_exc, "status_code", None) != 400:
+                raise
+            print("  [AI] Structured response failed; retrying JSON mode...")
+            response = client.chat.completions.create(
+                **request_options,
+                response_format={"type": "json_object"},
+            )
+
         return _parse_response(response, recruiter_emails)
 
     except Exception as exc:
