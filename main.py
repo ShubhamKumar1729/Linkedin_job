@@ -12,6 +12,8 @@ from config.settings import (
     AI_MATCH_MODE,
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
+    MAX_EMAILS_PER_POST,
+    MAX_JOB_DESCRIPTION_CHARS,
     SCROLL_ROUNDS,
     WAIT_BETWEEN_ROLES_MIN,
     WAIT_BETWEEN_ROLES_MAX,
@@ -136,6 +138,22 @@ def process_role(page, role, resume_path, sent_before_role):
                     print("       [SKIP] Missing or invalid recruiter email")
                     continue
                 print(f"       [EMAIL] Recruiter email found: {', '.join(emails)}")
+
+                # A real LinkedIn job post normally has only a small number of
+                # contacts and a bounded post body. Larger values indicate that
+                # LinkedIn returned a parent page container combining many posts.
+                if len(emails) > MAX_EMAILS_PER_POST:
+                    print(
+                        "       [SKIP] Combined LinkedIn container detected "
+                        f"({len(emails)} emails)"
+                    )
+                    continue
+                if len(post_text) > MAX_JOB_DESCRIPTION_CHARS:
+                    print(
+                        "       [SKIP] Oversized combined LinkedIn container "
+                        f"({len(post_text)} characters)"
+                    )
+                    continue
 
                 # Do not make role/location/bench/training decisions here.
                 # Groq receives the complete post and is the only relevance

@@ -85,6 +85,10 @@ _legacy_email_limit      = os.getenv("MAX_EMAILS_PER_ROLE", "50")
 MAX_EMAILS_PER_RUN       = _env_int(
     "MAX_EMAILS_PER_RUN", _legacy_email_limit, minimum=1
 )
+MAX_EMAILS_PER_POST      = _env_int("MAX_EMAILS_PER_POST", 5, minimum=1)
+MAX_JOB_DESCRIPTION_CHARS = _env_int(
+    "MAX_JOB_DESCRIPTION_CHARS", 12000, minimum=1000
+)
 DELAY_BETWEEN_EMAILS     = _env_int("DELAY_BETWEEN_EMAILS", 12, minimum=0)
 SCROLL_ROUNDS            = _env_int("SCROLL_ROUNDS", 8, minimum=0)
 WAIT_BETWEEN_ROLES_MIN   = _env_int(

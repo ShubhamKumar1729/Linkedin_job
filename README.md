@@ -48,6 +48,8 @@ AI_MATCH_MODE=role_location
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_RETRIES=2
 MAX_EMAILS_PER_RUN=50
+MAX_EMAILS_PER_POST=5
+MAX_JOB_DESCRIPTION_CHARS=12000
 ```
 
 `AI_MATCH_MODE=role_location` ignores skills and experience as decision gates;
@@ -57,6 +59,11 @@ only when skills and experience should also gate applications.
 
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.
+
+`MAX_EMAILS_PER_POST` and `MAX_JOB_DESCRIPTION_CHARS` are technical DOM guards:
+they reject accidental LinkedIn parent containers that combine many unrelated
+posts and would otherwise cause an oversized Groq request. They do not perform
+job relevance filtering.
 
 `MAX_EMAILS_PER_ROLE` is accepted only as a backwards-compatible fallback when
 `MAX_EMAILS_PER_RUN` is not present. New configurations should use

@@ -61,37 +61,6 @@ location, candidate skills, experience, work authorization, and explicit job
 requirements. Do not invent missing qualifications.
 """
 
-JSON_SCHEMA_RESPONSE_FORMAT = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "job_relevance_decision",
-        "schema": {
-            "type": "object",
-            "properties": {
-                "relevant": {"type": "boolean"},
-                "score": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 100,
-                },
-                "reason": {"type": "string"},
-                "approved_emails": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                },
-            },
-            "required": [
-                "relevant",
-                "score",
-                "reason",
-                "approved_emails",
-            ],
-            "additionalProperties": False,
-        },
-    },
-}
-
-
 @lru_cache(maxsize=1)
 def _get_client():
     """Create one reusable official Groq SDK client."""
@@ -198,7 +167,18 @@ def _parse_response(response, allowed_emails):
             lines = lines[:-1]
         content = "\n".join(lines).strip()
 
-    return _validate_result(json.loads(content), allowed_emails)
+    try:
+        raw_result = json.loads(content)
+    except json.JSONDecodeError:
+        # Plain-completion fallback models may add a short sentence before the
+        # JSON object. Extract the first complete object, then apply the same
+        # strict local schema and approved-email validation.
+        object_start = content.find("{")
+        if object_start < 0:
+            raise
+        raw_result, _ = json.JSONDecoder().raw_decode(content[object_start:])
+
+    return _validate_result(raw_result, allowed_emails)
 
 
 def evaluate_job_relevance(job_details, role):
@@ -258,21 +238,21 @@ def evaluate_job_relevance(job_details, role):
     try:
         client = _get_client()
         try:
-            response = client.chat.completions.create(
-                **request_options,
-                response_format=JSON_SCHEMA_RESPONSE_FORMAT,
-            )
-        except Exception as schema_exc:
-            # Groq can intermittently return HTTP 400 when a model fails to
-            # satisfy strict JSON Schema generation. Retry once in JSON Object
-            # Mode, then run the same local validation before any email sends.
-            if getattr(schema_exc, "status_code", None) != 400:
-                raise
-            print("  [AI] Structured response failed; retrying JSON mode...")
+            # JSON Object Mode is more reliable for this model than strict
+            # server-side schema generation. The response is still validated
+            # against our exact local contract before any email can be sent.
             response = client.chat.completions.create(
                 **request_options,
                 response_format={"type": "json_object"},
             )
+        except Exception as json_mode_exc:
+            # Groq can intermittently return HTTP 400 when JSON generation
+            # fails. Retry once without response_format; _parse_response still
+            # extracts and strictly validates the returned JSON object.
+            if getattr(json_mode_exc, "status_code", None) != 400:
+                raise
+            print("  [AI] JSON mode failed; retrying plain completion...")
+            response = client.chat.completions.create(**request_options)
 
         return _parse_response(response, recruiter_emails)
 
@@ -288,6 +268,8 @@ def evaluate_job_relevance(job_details, role):
             detail = (
                 f"model {GROQ_MODEL!r} was not found or is no longer available"
             )
+        elif status_code == 413:
+            detail = "request too large; likely a combined LinkedIn container"
         elif status_code:
             detail = f"API status {status_code}"
         elif isinstance(exc, (ValueError, json.JSONDecodeError)):
