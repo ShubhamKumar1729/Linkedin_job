@@ -11,11 +11,13 @@ Groq to evaluate candidate/job relevance before sending an application email.
    recruiter name, and post URL.
 3. Apply the existing bench-sales, job-signal, US-location, and email filters.
 4. Skip email/post pairs already recorded in `output/sent_emails.csv`.
-5. Send the complete job description and existing candidate configuration to
-   Groq for a structured relevance decision.
-6. Send an email only when Groq returns `relevant: true` and its score meets
-   `AI_RELEVANCE_THRESHOLD`.
-7. Stop after `MAX_EMAILS_PER_RUN` application emails have been sent
+5. Send the complete job description, target role, candidate location, and
+   extracted recruiter emails to Groq for a structured decision.
+6. In the default `role_location` mode, approve only matching-role US jobs and
+   recruiter emails that are presented as application contacts for that post.
+7. Send only when Groq returns `relevant: true`, its score meets
+   `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
+8. Stop after `MAX_EMAILS_PER_RUN` application emails have been sent
    successfully. Filtered, duplicate, failed, and irrelevant jobs do not count.
 
 Groq only evaluates relevance. Email generation, sending, and sent-application
@@ -41,10 +43,16 @@ Important AI settings:
 GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=openai/gpt-oss-120b
 AI_RELEVANCE_THRESHOLD=70
+AI_MATCH_MODE=role_location
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_RETRIES=2
 MAX_EMAILS_PER_RUN=50
 ```
+
+`AI_MATCH_MODE=role_location` ignores skills and experience as decision gates;
+it checks target-role alignment, explicit US location, and whether each email
+is presented as a recruiter/application contact for that opening. Use `strict`
+only when skills and experience should also gate applications.
 
 `MAX_EMAILS_PER_ROLE` is accepted only as a backwards-compatible fallback when
 `MAX_EMAILS_PER_RUN` is not present. New configurations should use
@@ -63,7 +71,9 @@ in the terminal when prompted. The persistent browser profile is stored in
 
 ## Data and operational notes
 
-- Candidate details and the complete visible LinkedIn post are sent to Groq.
+- The complete visible LinkedIn post is sent to Groq. `role_location` mode
+  sends only candidate location/preferred roles; `strict` sends full configured
+  candidate details.
 - A Groq timeout, rate limit, API error, or invalid response fails closed: that
   job is skipped and no email is sent.
 - Model availability and API rate limits depend on the Groq account and plan.

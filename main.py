@@ -9,6 +9,7 @@ from config.settings import (
     ROLES,
     GROQ_API_KEY,
     GROQ_MODEL,
+    AI_MATCH_MODE,
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
     SCROLL_ROUNDS,
@@ -42,6 +43,7 @@ def print_banner():
     print(f"  🎯 Total Roles : {len(ROLES)}")
     print(f"  📧 Max / Run   : {MAX_EMAILS_PER_RUN} successful emails")
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
+    print(f"  🧭 Match Mode  : {AI_MATCH_MODE}")
     print(f"  ✅ AI Threshold: {AI_RELEVANCE_THRESHOLD}")
     print(f"  ⏳ Wait/Role   : "
           f"{WAIT_BETWEEN_ROLES_MIN}-{WAIT_BETWEEN_ROLES_MAX} seconds")
@@ -163,29 +165,38 @@ def process_role(page, role, resume_path, sent_before_role):
                 if not unsent_emails:
                     continue
 
+                job_details["recruiter_emails"] = unsent_emails
+                ai_cache_key = (post_link, tuple(sorted(unsent_emails)))
+
                 recruiter_name = extract_poster_name(card)
                 print(f"       🔗 {post_link}")
                 print(f"       👤 {recruiter_name or 'Name not found'}")
 
-                # Groq only decides relevance. It never generates or sends
-                # the application email.
-                if post_link in ai_results_by_post:
+                # Groq only decides relevance and which supplied recruiter
+                # emails genuinely belong to this opening. It never sends.
+                if ai_cache_key in ai_results_by_post:
                     print("       [AI] Reusing this run's previous decision")
-                    ai_result = ai_results_by_post[post_link]
+                    ai_result = ai_results_by_post[ai_cache_key]
                 else:
                     print("       [AI] Sending complete job data to Groq...")
                     ai_result = evaluate_job_relevance(job_details, role)
                     if ai_result is not None:
-                        ai_results_by_post[post_link] = ai_result
+                        ai_results_by_post[ai_cache_key] = ai_result
 
                 if ai_result is None:
                     print("       [SKIP] Job skipped safely after AI failure")
                     continue
 
                 score = ai_result["score"]
+                approved_email_set = set(ai_result["approved_emails"])
+                emails_to_send = [
+                    email for email in unsent_emails
+                    if email in approved_email_set
+                ]
                 ai_approved = (
                     ai_result["relevant"]
                     and score >= AI_RELEVANCE_THRESHOLD
+                    and bool(emails_to_send)
                 )
                 decision = "RELEVANT" if ai_approved else "NOT RELEVANT"
 
@@ -197,7 +208,12 @@ def process_role(page, role, resume_path, sent_before_role):
                     print("       [SKIP] Job skipped")
                     continue
 
-                for email in unsent_emails:
+                print(
+                    "       [AI] Genuine recruiter email(s): "
+                    + ", ".join(emails_to_send)
+                )
+
+                for email in emails_to_send:
                     if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
                         break
 

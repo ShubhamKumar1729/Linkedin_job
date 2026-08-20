@@ -43,6 +43,11 @@ GROQ_MODEL               = os.getenv(
 AI_RELEVANCE_THRESHOLD   = _env_int(
     "AI_RELEVANCE_THRESHOLD", 70, minimum=0, maximum=100
 )
+AI_MATCH_MODE            = os.getenv(
+    "AI_MATCH_MODE", "role_location"
+).strip().lower()
+if AI_MATCH_MODE not in {"role_location", "strict"}:
+    raise ValueError("AI_MATCH_MODE must be 'role_location' or 'strict'")
 GROQ_TIMEOUT_SECONDS     = _env_int(
     "GROQ_TIMEOUT_SECONDS", 30, minimum=1
 )
