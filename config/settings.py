@@ -96,12 +96,15 @@ BCC_EMAILS = _parse_list("BCC_EMAILS")
 
 # ── Bot Settings ───────────────────────────────────────────
 # MAX_EMAILS_PER_ROLE is accepted as a backwards-compatible fallback.
-_legacy_email_limit      = os.getenv("MAX_EMAILS_PER_ROLE", "50")
+_legacy_email_limit      = os.getenv("MAX_EMAILS_PER_ROLE", "100")
 MAX_EMAILS_PER_RUN       = _env_int(
     "MAX_EMAILS_PER_RUN", _legacy_email_limit, minimum=1
 )
-TARGET_EMAILS_PER_ROLE   = _env_int(
-    "TARGET_EMAILS_PER_ROLE", 3, minimum=1
+# TARGET_EMAILS_PER_ROLE remains a backwards-compatible fallback. This is a
+# minimum reporting goal, not a cap; quality sends continue up to the run limit.
+_legacy_role_target      = os.getenv("TARGET_EMAILS_PER_ROLE", "3")
+MIN_QUALITY_EMAILS_PER_ROLE = _env_int(
+    "MIN_QUALITY_EMAILS_PER_ROLE", _legacy_role_target, minimum=1
 )
 MAX_PASSES_PER_ROLE      = _env_int(
     "MAX_PASSES_PER_ROLE", 3, minimum=1, maximum=20

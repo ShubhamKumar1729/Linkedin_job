@@ -12,7 +12,7 @@ from config.settings import (
     AI_MATCH_MODE,
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
-    TARGET_EMAILS_PER_ROLE,
+    MIN_QUALITY_EMAILS_PER_ROLE,
     MAX_PASSES_PER_ROLE,
     MAX_EMAILS_PER_POST,
     MAX_EXPERIENCE_YEARS,
@@ -47,7 +47,10 @@ def print_banner():
     print(f"  📄 Resume      : {RESUME_PATH.name}")
     print(f"  🎯 Total Roles : {len(ROLES)}")
     print(f"  📧 Max / Run   : {MAX_EMAILS_PER_RUN} successful emails")
-    print(f"  🎯 Target/Role : {TARGET_EMAILS_PER_ROLE} quality emails")
+    print(
+        f"  🎯 Minimum/Role: {MIN_QUALITY_EMAILS_PER_ROLE} quality emails "
+        "(not a cap)"
+    )
     print(f"  🔄 Passes/Role : up to {MAX_PASSES_PER_ROLE}")
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
     print(f"  🧭 Match Mode  : {AI_MATCH_MODE}")
@@ -110,10 +113,7 @@ def process_role(page, role, resume_path, sent_before_role):
     # global successful-send limit, or configured pass limit is reached.
     for pass_num in range(1, MAX_PASSES_PER_ROLE + 1):
 
-        if (
-            sent_before_role + role_sent >= MAX_EMAILS_PER_RUN
-            or role_sent >= TARGET_EMAILS_PER_ROLE
-        ):
+        if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
             break
 
         cards = get_cards(page)
@@ -128,12 +128,6 @@ def process_role(page, role, resume_path, sent_before_role):
                 print(
                     f"\n  [STATS] Successful email limit reached: "
                     f"{MAX_EMAILS_PER_RUN}/{MAX_EMAILS_PER_RUN}"
-                )
-                break
-            if role_sent >= TARGET_EMAILS_PER_ROLE:
-                print(
-                    f"\n  [STATS] Quality target reached for {role['name']}: "
-                    f"{role_sent}/{TARGET_EMAILS_PER_ROLE}"
                 )
                 break
 
@@ -252,10 +246,7 @@ def process_role(page, role, resume_path, sent_before_role):
                 )
 
                 for email in emails_to_send:
-                    if (
-                        sent_before_role + role_sent >= MAX_EMAILS_PER_RUN
-                        or role_sent >= TARGET_EMAILS_PER_ROLE
-                    ):
+                    if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
                         break
 
                     print(f"       [EMAIL] Sending application to {email}...")
@@ -277,8 +268,8 @@ def process_role(page, role, resume_path, sent_before_role):
                             f"{MAX_EMAILS_PER_RUN} emails sent"
                         )
                         print(
-                            f"       [STATS] Role: {role_sent}/"
-                            f"{TARGET_EMAILS_PER_ROLE} quality emails"
+                            f"       [STATS] Role: {role_sent} quality emails "
+                            f"(minimum goal {MIN_QUALITY_EMAILS_PER_ROLE})"
                         )
                     else:
                         print(
@@ -290,25 +281,28 @@ def process_role(page, role, resume_path, sent_before_role):
                 print(f"  {idx:>3}. [ERROR] Job processing failed: {e}")
                 print("       [SKIP] Job skipped safely")
 
-        # Continue loading more posts while quality sends are below target.
+        # Continue through all configured passes. The per-role number is a
+        # minimum goal only; it never caps additional quality applications.
         if (
             pass_num < MAX_PASSES_PER_ROLE
             and sent_before_role + role_sent < MAX_EMAILS_PER_RUN
-            and role_sent < TARGET_EMAILS_PER_ROLE
         ):
             print(
                 f"\n  📜 Scrolling for more posts "
-                f"(role target {role_sent}/{TARGET_EMAILS_PER_ROLE})..."
+                f"({role_sent} quality sends so far; minimum goal "
+                f"{MIN_QUALITY_EMAILS_PER_ROLE})..."
             )
             scroll_page(page, rounds=SCROLL_ROUNDS)
 
-    if (
-        role_sent < TARGET_EMAILS_PER_ROLE
-        and sent_before_role + role_sent < MAX_EMAILS_PER_RUN
-    ):
+    if sent_before_role + role_sent < MAX_EMAILS_PER_RUN:
+        goal_status = (
+            "minimum achieved"
+            if role_sent >= MIN_QUALITY_EMAILS_PER_ROLE
+            else "below minimum"
+        )
         print(
-            f"\n  [STATS] {role['name']}: {role_sent}/"
-            f"{TARGET_EMAILS_PER_ROLE} quality emails found after "
+            f"\n  [STATS] {role['name']}: {role_sent} quality emails "
+            f"({goal_status}; goal {MIN_QUALITY_EMAILS_PER_ROLE}) after "
             f"{MAX_PASSES_PER_ROLE} passes"
         )
 

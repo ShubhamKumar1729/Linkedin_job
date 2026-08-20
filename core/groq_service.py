@@ -55,8 +55,10 @@ these are true:
    or application contact for that matching opening.
 4. Any explicit minimum experience requirement is no greater than
    candidate.maximum_acceptable_job_experience_years. A missing experience
-   requirement is acceptable. For example, with a maximum of 5, requirements
-   of 1-5 years pass and requirements of 10-12 years fail.
+   requirement is acceptable. The configured maximum is the candidate's
+   authorized stretch range: do not reject because actual experience is lower
+   when the job minimum is within that range. With a maximum of 5, requirements
+   written as 1-5 years or 5+ years may pass; 6+ or 10-12 years must fail.
 5. Any explicit work-authorization restriction is compatible with the
    candidate's configured work authorization. Treat STEM OPT as an EAD when a
    post broadly allows EAD without excluding OPT/STEM OPT. Reject explicit
