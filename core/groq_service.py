@@ -8,9 +8,11 @@ from config.settings import (
     AI_RELEVANCE_THRESHOLD,
     CANDIDATE,
     GROQ_API_KEY,
+    GROQ_MAX_COMPLETION_TOKENS,
     GROQ_MAX_RETRIES,
     GROQ_MODEL,
     GROQ_TIMEOUT_SECONDS,
+    MAX_EXPERIENCE_YEARS,
     ROLES,
 )
 from utils.helpers import normalize_email
@@ -35,7 +37,7 @@ training, fake, or suspicious addresses. When relevant is false,
 approved_emails must be empty.
 """
 
-ROLE_LOCATION_PROMPT = """Decision policy: ROLE + USA + RECRUITER ONLY.
+ROLE_LOCATION_PROMPT = """Decision policy: ROLE + USA + CANDIDATE BASICS + RECRUITER.
 Set relevant=true and score at least the configured threshold only when all of
 these are true:
 1. The actual opening is the currently_evaluated_role or a normal close title
@@ -44,15 +46,22 @@ these are true:
    within the United States. Ambiguous, global, and non-US locations fail.
 3. At least one supplied recruiter email is genuinely presented as the resume
    or application contact for that matching opening.
+4. Any explicit minimum experience requirement is no greater than
+   candidate.maximum_acceptable_job_experience_years. A missing experience
+   requirement is acceptable. For example, with a maximum of 5, requirements
+   of 1-5 years pass and requirements of 10-12 years fail.
+5. Any explicit work-authorization restriction is compatible with the
+   candidate's configured work authorization.
 
 Bench-sales/hotlist posts, training or coaching promotions, résumé services,
 and posts that merely ask for engagement are not genuine job openings and must
 be rejected by this AI decision.
 
-Do not use candidate skills, years of experience, education, technologies,
-rate, or detailed qualification gaps to reject a job in this mode. If all
-three checks pass, use 70-100. If any check fails, return relevant=false, a
-score below the threshold, and no approved emails.
+Use all supplied candidate details for context. Candidate skills may support
+the reason and score, but do not reject an otherwise matching role solely for
+missing individual tools or technologies. If all required checks pass, use
+70-100. If any required check fails, return relevant=false, a score below the
+threshold, and no approved emails.
 """
 
 STRICT_PROMPT = """Decision policy: STRICT CANDIDATE FIT.
@@ -80,13 +89,6 @@ def _candidate_payload(role):
         configured_role["name"] for configured_role in ROLES
     ]
 
-    if AI_MATCH_MODE == "role_location":
-        return {
-            "candidate_location": CANDIDATE.get("location", ""),
-            "candidate_preferred_roles": preferred_roles,
-            "currently_evaluated_role": role.get("name", ""),
-        }
-
     return {
         "candidate_details": dict(CANDIDATE),
         "candidate_skills": role.get("skills", ""),
@@ -95,6 +97,7 @@ def _candidate_payload(role):
             for configured_role in ROLES
         },
         "candidate_experience": CANDIDATE.get("experience", ""),
+        "maximum_acceptable_job_experience_years": MAX_EXPERIENCE_YEARS,
         "candidate_preferred_roles": preferred_roles,
         "currently_evaluated_role": role.get("name", ""),
     }
@@ -232,8 +235,10 @@ def evaluate_job_relevance(job_details, role):
         "model": GROQ_MODEL,
         "messages": messages,
         "temperature": 0,
-        "max_tokens": 300,
+        "max_completion_tokens": GROQ_MAX_COMPLETION_TOKENS,
     }
+    if GROQ_MODEL.startswith("openai/gpt-oss"):
+        request_options["reasoning_effort"] = "low"
 
     try:
         client = _get_client()

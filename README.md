@@ -47,15 +47,18 @@ AI_RELEVANCE_THRESHOLD=70
 AI_MATCH_MODE=role_location
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_RETRIES=2
+GROQ_MAX_COMPLETION_TOKENS=1000
+MAX_EXPERIENCE_YEARS=5
 MAX_EMAILS_PER_RUN=50
 MAX_EMAILS_PER_POST=5
 MAX_JOB_DESCRIPTION_CHARS=12000
 ```
 
-`AI_MATCH_MODE=role_location` ignores skills and experience as decision gates;
-it checks target-role alignment, explicit US location, and whether each email
-is presented as a recruiter/application contact for that opening. Use `strict`
-only when skills and experience should also gate applications.
+`AI_MATCH_MODE=role_location` checks target-role alignment, explicit US
+location, a genuine application contact, candidate work authorization, and the
+configured experience ceiling. With `MAX_EXPERIENCE_YEARS=5`, explicit job
+requirements of 1-5 years may pass while 10-12 years are rejected. Candidate
+skills are supplied for context but individual tool gaps are not a hard gate.
 
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.
@@ -82,9 +85,9 @@ in the terminal when prompted. The persistent browser profile is stored in
 
 ## Data and operational notes
 
-- The complete visible LinkedIn post is sent to Groq. `role_location` mode
-  sends only candidate location/preferred roles; `strict` sends full configured
-  candidate details.
+- The complete visible LinkedIn post, full configured candidate details,
+  role-specific skills, preferred roles, and experience ceiling are sent to
+  Groq. The résumé PDF itself is not uploaded or parsed.
 - A Groq timeout, rate limit, API error, or invalid response fails closed: that
   job is skipped and no email is sent.
 - Model availability and API rate limits depend on the Groq account and plan.

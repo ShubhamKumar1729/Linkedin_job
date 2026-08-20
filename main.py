@@ -13,6 +13,7 @@ from config.settings import (
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
     MAX_EMAILS_PER_POST,
+    MAX_EXPERIENCE_YEARS,
     MAX_JOB_DESCRIPTION_CHARS,
     SCROLL_ROUNDS,
     WAIT_BETWEEN_ROLES_MIN,
@@ -46,6 +47,7 @@ def print_banner():
     print(f"  📧 Max / Run   : {MAX_EMAILS_PER_RUN} successful emails")
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
     print(f"  🧭 Match Mode  : {AI_MATCH_MODE}")
+    print(f"  🧑 Experience  : jobs requiring up to {MAX_EXPERIENCE_YEARS} years")
     print(f"  ✅ AI Threshold: {AI_RELEVANCE_THRESHOLD}")
     print(f"  ⏳ Wait/Role   : "
           f"{WAIT_BETWEEN_ROLES_MIN}-{WAIT_BETWEEN_ROLES_MAX} seconds")

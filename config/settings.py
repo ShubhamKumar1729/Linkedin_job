@@ -54,6 +54,9 @@ GROQ_TIMEOUT_SECONDS     = _env_int(
 GROQ_MAX_RETRIES         = _env_int(
     "GROQ_MAX_RETRIES", 2, minimum=0, maximum=5
 )
+GROQ_MAX_COMPLETION_TOKENS = _env_int(
+    "GROQ_MAX_COMPLETION_TOKENS", 1000, minimum=300
+)
 
 # ── Candidate Info ─────────────────────────────────────────
 CANDIDATE = {
@@ -68,6 +71,9 @@ CANDIDATE = {
     "experience":   os.getenv("CANDIDATE_EXPERIENCE",   "").strip(),
     "rate":         os.getenv("CANDIDATE_RATE",         "").strip(),
 }
+MAX_EXPERIENCE_YEARS = _env_int(
+    "MAX_EXPERIENCE_YEARS", 5, minimum=0, maximum=50
+)
 
 # ── CC / BCC ───────────────────────────────────────────────
 def _parse_list(key):
