@@ -17,6 +17,11 @@ CARD_SELECTORS = [
     "div[data-urn]",
     "article[data-urn]",
     "article",
+    (
+        "xpath=//a[contains(@href, '/posts/') or "
+        "contains(@href, '/feed/update/')]/ancestor::*["
+        "(self::div or self::article or self::li) and contains(., '@')][1]"
+    ),
 ]
 
 
@@ -211,10 +216,12 @@ def get_cards(page):
     # Use the first selector that produces actual email-containing post cards.
     # A selector can exist in LinkedIn's DOM but match only empty/hidden shell
     # elements, so do not stop merely because raw elements were found.
-    for selector in CARD_SELECTORS:
+    selector_counts = []
+    for selector_index, selector in enumerate(CARD_SELECTORS, start=1):
         try:
             found = page.locator(selector).all()
         except Exception:
+            selector_counts.append(f"{selector_index}:error")
             continue
 
         selector_cards = []
@@ -240,9 +247,20 @@ def get_cards(page):
             except Exception:
                 pass
 
+        selector_counts.append(
+            f"{selector_index}:{len(found)}/{len(selector_cards)}"
+        )
         if selector_cards:
             cards = selector_cards
+            print(
+                f"  [SCRAPER] Selector {selector_index} found "
+                f"{len(cards)} email-containing post cards"
+            )
             break
+
+    if not cards:
+        diagnostics = ", ".join(selector_counts)
+        print(f"  [SCRAPER] No matching post cards ({diagnostics})")
 
     # Deduplicate by first 700 chars of text
     unique = []
