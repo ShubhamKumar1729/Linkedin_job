@@ -90,6 +90,7 @@ def process_role(page, role, resume_path, sent_before_role):
     isolated so the next visible post can still be processed.
     """
     role_sent = 0
+    ai_results_by_post = {}
 
     # ── Auto Search + Filter ───────────────────────────────
     search_and_filter(page, role)
@@ -168,8 +169,15 @@ def process_role(page, role, resume_path, sent_before_role):
 
                 # Groq only decides relevance. It never generates or sends
                 # the application email.
-                print("       [AI] Sending complete job data to Groq...")
-                ai_result = evaluate_job_relevance(job_details, role)
+                if post_link in ai_results_by_post:
+                    print("       [AI] Reusing this run's previous decision")
+                    ai_result = ai_results_by_post[post_link]
+                else:
+                    print("       [AI] Sending complete job data to Groq...")
+                    ai_result = evaluate_job_relevance(job_details, role)
+                    if ai_result is not None:
+                        ai_results_by_post[post_link] = ai_result
+
                 if ai_result is None:
                     print("       [SKIP] Job skipped safely after AI failure")
                     continue
