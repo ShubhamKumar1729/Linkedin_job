@@ -28,7 +28,7 @@ from core.scraper      import (
     extract_poster_name,
     extract_job_details,
 )
-from core.filters      import should_send_to_post, filter_recruiter_emails
+from core.filters      import filter_recruiter_emails
 from core.groq_service import evaluate_job_relevance
 from core.email_sender import send_email
 from core.tracker      import already_sent, load_sent_cache
@@ -137,13 +137,10 @@ def process_role(page, role, resume_path, sent_before_role):
                     continue
                 print(f"       [EMAIL] Recruiter email found: {', '.join(emails)}")
 
-                # Preserve all existing/basic post filters.
-                allowed, reason = should_send_to_post(post_text)
-                if not allowed:
-                    print(f"       [FILTER] Rejected: {reason}")
-                    print("       [SKIP] Job skipped")
-                    continue
-                print("       [FILTER] Passed basic filters")
+                # Do not make role/location/bench/training decisions here.
+                # Groq receives the complete post and is the only relevance
+                # gate after deterministic email/data validation.
+                print("       [DATA] Basic data valid; Groq will decide")
 
                 post_link = get_post_link_from_card(page, card)
                 if not post_link:

@@ -9,12 +9,13 @@ Groq to evaluate candidate/job relevance before sending an application email.
 1. Search LinkedIn posts for each configured role.
 2. Extract the complete visible post, structured job details, recruiter email,
    recruiter name, and post URL.
-3. Apply the existing bench-sales, job-signal, US-location, and email filters.
+3. Validate only deterministic requirements: non-empty job text, recruiter
+   email format, post link, and duplicate-send status.
 4. Skip email/post pairs already recorded in `output/sent_emails.csv`.
 5. Send the complete job description, target role, candidate location, and
-   extracted recruiter emails to Groq for a structured decision.
-6. In the default `role_location` mode, approve only matching-role US jobs and
-   recruiter emails that are presented as application contacts for that post.
+   extracted recruiter emails to Groq for the relevance decision.
+6. In the default `role_location` mode, Groq alone rejects wrong roles,
+   non-US jobs, bench sales/training, and unrelated or suspicious contacts.
 7. Send only when Groq returns `relevant: true`, its score meets
    `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
 8. Stop after `MAX_EMAILS_PER_RUN` application emails have been sent
@@ -47,7 +48,6 @@ AI_MATCH_MODE=role_location
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_RETRIES=2
 MAX_EMAILS_PER_RUN=50
-AUTO_BUILD_ROLE_SEARCH=true
 ```
 
 `AI_MATCH_MODE=role_location` ignores skills and experience as decision gates;
@@ -55,9 +55,8 @@ it checks target-role alignment, explicit US location, and whether each email
 is presented as a recruiter/application contact for that opening. Use `strict`
 only when skills and experience should also gate applications.
 
-`AUTO_BUILD_ROLE_SEARCH=true` replaces noisy raw role searches at runtime with
-a quoted target-role + USA Boolean query while retaining each configured role
-name. Set it to `false` only to use `ROLE_N_SEARCH` exactly as written.
+LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
+`.env`; changing that value directly changes the next run's search query.
 
 `MAX_EMAILS_PER_ROLE` is accepted only as a backwards-compatible fallback when
 `MAX_EMAILS_PER_RUN` is not present. New configurations should use

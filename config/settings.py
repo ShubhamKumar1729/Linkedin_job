@@ -20,16 +20,6 @@ def _env_int(name, default, minimum=None, maximum=None):
     return value
 
 
-def _env_bool(name, default):
-    """Read a common true/false environment setting."""
-    raw_value = os.getenv(name, str(default)).strip().lower()
-    if raw_value in {"1", "true", "yes", "on"}:
-        return True
-    if raw_value in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"{name} must be true or false, got {raw_value!r}")
-
-
 # ── Paths ──────────────────────────────────────────────────
 BASE_DIR    = Path(__file__).parent.parent
 OUTPUT_DIR  = BASE_DIR / "output"
@@ -97,7 +87,6 @@ MAX_EMAILS_PER_RUN       = _env_int(
 )
 DELAY_BETWEEN_EMAILS     = _env_int("DELAY_BETWEEN_EMAILS", 12, minimum=0)
 SCROLL_ROUNDS            = _env_int("SCROLL_ROUNDS", 8, minimum=0)
-AUTO_BUILD_ROLE_SEARCH   = _env_bool("AUTO_BUILD_ROLE_SEARCH", True)
 WAIT_BETWEEN_ROLES_MIN   = _env_int(
     "WAIT_BETWEEN_ROLES_MIN", 60, minimum=0
 )

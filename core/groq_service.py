@@ -45,6 +45,10 @@ these are true:
 3. At least one supplied recruiter email is genuinely presented as the resume
    or application contact for that matching opening.
 
+Bench-sales/hotlist posts, training or coaching promotions, résumé services,
+and posts that merely ask for engagement are not genuine job openings and must
+be rejected by this AI decision.
+
 Do not use candidate skills, years of experience, education, technologies,
 rate, or detailed qualification gaps to reject a job in this mode. If all
 three checks pass, use 70-100. If any check fails, return relevant=false, a
