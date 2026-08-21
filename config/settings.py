@@ -47,10 +47,12 @@ AI_RELEVANCE_THRESHOLD   = _env_int(
     "AI_RELEVANCE_THRESHOLD", 70, minimum=0, maximum=100
 )
 AI_MATCH_MODE            = os.getenv(
-    "AI_MATCH_MODE", "role_location"
+    "AI_MATCH_MODE", "role_quality"
 ).strip().lower()
-if AI_MATCH_MODE not in {"role_location", "strict"}:
-    raise ValueError("AI_MATCH_MODE must be 'role_location' or 'strict'")
+if AI_MATCH_MODE not in {"role_quality", "role_location", "strict"}:
+    raise ValueError(
+        "AI_MATCH_MODE must be 'role_quality', 'role_location', or 'strict'"
+    )
 RECRUITER_POLICY         = os.getenv(
     "RECRUITER_POLICY", "hybrid_quality"
 ).strip().lower()

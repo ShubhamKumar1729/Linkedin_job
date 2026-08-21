@@ -14,8 +14,8 @@ Groq to evaluate candidate/job relevance before sending an application email.
 4. Skip email/post pairs already recorded in `output/sent_emails.csv`.
 5. Send the complete job description, target role, candidate details, and
    extracted recruiter emails to Groq for the relevance decision.
-6. Groq rejects wrong roles, non-US jobs, excessive experience, incompatible
-   work authorization, and low-quality staffing/marketing contacts.
+6. Groq rejects wrong roles, excessive experience, incompatible authorization,
+   and low-quality staffing/marketing contacts; location is intentionally ignored.
 7. Send approved direct-employer emails immediately; queue only specific,
    named-client agency requisitions under a run-wide 20% cap.
 8. Process 30 unique linked posts per role and keep scrolling to the end when
@@ -45,7 +45,7 @@ GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=openai/gpt-oss-120b
 GROQ_FALLBACK_MODEL=openai/gpt-oss-20b
 AI_RELEVANCE_THRESHOLD=70
-AI_MATCH_MODE=role_location
+AI_MATCH_MODE=role_quality
 RECRUITER_POLICY=hybrid_quality
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_COMPLETION_TOKENS=1000
@@ -64,11 +64,11 @@ MAX_EMAILS_PER_POST=5
 MAX_JOB_DESCRIPTION_CHARS=12000
 ```
 
-`AI_MATCH_MODE=role_location` checks target-role alignment, explicit US
-location, a genuine application contact, candidate work authorization, and the
-configured experience ceiling. With `MAX_EXPERIENCE_YEARS=5`, explicit job
-requirements of 1-5 years may pass while 10-12 years are rejected. Candidate
-skills are supplied for context but individual tool gaps are not a hard gate.
+`AI_MATCH_MODE=role_quality` checks role alignment, genuine opening/contact,
+work authorization, and the configured experience ceiling, while deliberately
+ignoring job and candidate location. With `MAX_EXPERIENCE_YEARS=5`, explicit
+requirements of 1-5 or 5+ years may pass while 6+ and 10-12 years are rejected.
+Candidate skills provide context but individual tool gaps are not a hard gate.
 
 `RECRUITER_POLICY=hybrid_quality` prefers direct-employer corporate recruiters.
 Third-party recruiters qualify only for a specific active requisition with a

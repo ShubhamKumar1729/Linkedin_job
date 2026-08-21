@@ -45,6 +45,32 @@ contacts for that specific opening. When relevant is false, approved_emails
 must be empty.
 """
 
+ROLE_QUALITY_PROMPT = """Decision policy: ROLE + CANDIDATE BASICS + RECRUITER.
+Set relevant=true and score at least the configured threshold only when all of
+these are true:
+1. The actual opening is the currently_evaluated_role or a normal close title
+   variant in the same job family.
+2. At least one supplied recruiter email is genuinely presented as the resume
+   or application contact for that matching opening.
+3. Any explicit minimum experience requirement is no greater than
+   candidate.maximum_acceptable_job_experience_years. A missing experience
+   requirement is acceptable. With a maximum of 5, requirements written as
+   1-5 years or 5+ years may pass; 6+ or 10-12 years must fail.
+4. Any explicit work-authorization restriction is compatible with the
+   candidate's configured work authorization. Treat STEM OPT as EAD when EAD
+   is broadly allowed; reject explicit USC/Green-Card-only and no-OPT rules.
+
+Do not reject or reduce relevance because of job country, city, state, onsite,
+remote, hybrid, candidate current location, or relocation. Location is not a
+decision factor in this mode.
+
+Bench-sales/hotlist posts, training or coaching promotions, resume services,
+and engagement-only posts are not genuine openings and must be rejected.
+Candidate skills may support the reason and score, but individual tool gaps are
+not a hard rejection when the role itself matches. If all required checks pass,
+use 70-100; otherwise return relevant=false below the threshold.
+"""
+
 ROLE_LOCATION_PROMPT = """Decision policy: ROLE + USA + CANDIDATE BASICS + RECRUITER.
 Set relevant=true and score at least the configured threshold only when all of
 these are true:
@@ -113,8 +139,8 @@ Only recruiter_type=direct_employer may ever return relevant=true.
 REAL_REQUISITION_PROMPT = """Recruiter policy: REAL REQUISITION.
 Direct employers are preferred. A third-party recruiter may pass only for a
 specific active requisition with a named client/end-employer, one concrete job,
-clear US location, experience/authorization terms, and a corporate application
-email explicitly tied to that requisition. Generic staffing, multiple-role
+clear employment/authorization terms, and a corporate application email
+explicitly tied to that requisition. Generic staffing, multiple-role
 lists, bench-sales, hotlists, placement, partnerships, and résumé collection
 must fail. Label an approved third-party contact as staffing_agency.
 """
@@ -387,11 +413,12 @@ def evaluate_job_relevance(job_details, role):
         print("  [AI] Invalid job data: missing recruiter emails")
         return None
 
-    policy_prompt = (
-        ROLE_LOCATION_PROMPT
-        if AI_MATCH_MODE == "role_location"
-        else STRICT_PROMPT
-    )
+    if AI_MATCH_MODE == "role_quality":
+        policy_prompt = ROLE_QUALITY_PROMPT
+    elif AI_MATCH_MODE == "role_location":
+        policy_prompt = ROLE_LOCATION_PROMPT
+    else:
+        policy_prompt = STRICT_PROMPT
     if RECRUITER_POLICY == "direct_employer_only":
         recruiter_policy_prompt = DIRECT_EMPLOYER_PROMPT
     elif RECRUITER_POLICY == "hybrid_quality":
