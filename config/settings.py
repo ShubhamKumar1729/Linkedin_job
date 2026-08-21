@@ -44,7 +44,7 @@ GROQ_FALLBACK_MODEL      = os.getenv(
     "GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b"
 ).strip()
 AI_RELEVANCE_THRESHOLD   = _env_int(
-    "AI_RELEVANCE_THRESHOLD", 70, minimum=0, maximum=100
+    "AI_RELEVANCE_THRESHOLD", 60, minimum=0, maximum=100
 )
 AI_MATCH_MODE            = os.getenv(
     "AI_MATCH_MODE", "role_quality"
@@ -54,7 +54,7 @@ if AI_MATCH_MODE not in {"role_quality", "role_location", "strict"}:
         "AI_MATCH_MODE must be 'role_quality', 'role_location', or 'strict'"
     )
 RECRUITER_POLICY         = os.getenv(
-    "RECRUITER_POLICY", "hybrid_quality"
+    "RECRUITER_POLICY", "direct_employer_only"
 ).strip().lower()
 if RECRUITER_POLICY not in {
     "direct_employer_only", "real_requisition", "hybrid_quality"
@@ -68,6 +68,12 @@ GROQ_TIMEOUT_SECONDS     = _env_int(
 )
 GROQ_MAX_COMPLETION_TOKENS = _env_int(
     "GROQ_MAX_COMPLETION_TOKENS", 1000, minimum=300
+)
+GROQ_JOB_DESCRIPTION_MAX_CHARS = _env_int(
+    "GROQ_JOB_DESCRIPTION_MAX_CHARS", 4000, minimum=500
+)
+GROQ_JOB_DESCRIPTION_RATIO_PERCENT = _env_int(
+    "GROQ_JOB_DESCRIPTION_RATIO_PERCENT", 50, minimum=10, maximum=100
 )
 DELAY_BETWEEN_AI_REQUESTS = _env_int(
     "DELAY_BETWEEN_AI_REQUESTS", 15, minimum=0

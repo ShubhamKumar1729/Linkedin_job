@@ -12,6 +12,8 @@ from config.settings import (
     DELAY_BETWEEN_AI_REQUESTS,
     GROQ_API_KEY,
     GROQ_FALLBACK_MODEL,
+    GROQ_JOB_DESCRIPTION_MAX_CHARS,
+    GROQ_JOB_DESCRIPTION_RATIO_PERCENT,
     GROQ_MAX_BLOCKING_WAIT_SECONDS,
     GROQ_MAX_COMPLETION_TOKENS,
     GROQ_MAX_RATE_LIMIT_WAIT_SECONDS,
@@ -22,7 +24,7 @@ from config.settings import (
     RECRUITER_POLICY,
     ROLES,
 )
-from utils.helpers import normalize_email
+from utils.helpers import clean, normalize_email
 
 
 SYSTEM_PROMPT = """You evaluate LinkedIn hiring posts before an application is
@@ -68,7 +70,7 @@ Bench-sales/hotlist posts, training or coaching promotions, resume services,
 and engagement-only posts are not genuine openings and must be rejected.
 Candidate skills may support the reason and score, but individual tool gaps are
 not a hard rejection when the role itself matches. If all required checks pass,
-use 70-100; otherwise return relevant=false below the threshold.
+score at or above decision_threshold; otherwise score below that threshold.
 """
 
 ROLE_LOCATION_PROMPT = """Decision policy: ROLE + USA + CANDIDATE BASICS + RECRUITER.
@@ -100,9 +102,9 @@ be rejected by this AI decision.
 
 Use all supplied candidate details for context. Candidate skills may support
 the reason and score, but do not reject an otherwise matching role solely for
-missing individual tools or technologies. If all required checks pass, use
-70-100. If any required check fails, return relevant=false, a score below the
-threshold, and no approved emails.
+missing individual tools or technologies. If all required checks pass, score
+at or above decision_threshold. If any required check fails, return
+relevant=false below the threshold with no approved emails.
 """
 
 STRICT_PROMPT = """Decision policy: STRICT CANDIDATE FIT.
@@ -237,6 +239,75 @@ def _request_json_response(client, request_options):
             raise
         print("  [AI] JSON mode failed; retrying plain completion...")
         return _create_completion(client, **request_options)
+
+
+AI_JD_PRIORITY_TERMS = (
+    "job title", "position", "role", "company", "client", "location",
+    "experience", "years", "skills", "requirements", "qualifications",
+    "responsibilities", "employment", "full time", "contract", "w2",
+    "c2c", "visa", "authorization", "opt", "ead", "h1b", "apply", "@",
+)
+
+
+def compact_job_description(post_text):
+    """Keep roughly half of a post, prioritizing job-decision information."""
+    text = clean(post_text)
+    if not text:
+        return ""
+
+    ratio_target = int(
+        len(text) * GROQ_JOB_DESCRIPTION_RATIO_PERCENT / 100
+    )
+    target_chars = min(
+        GROQ_JOB_DESCRIPTION_MAX_CHARS,
+        max(1000, ratio_target),
+    )
+    if len(text) <= target_chars:
+        return text
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) <= 2:
+        lines = [
+            part.strip()
+            for part in re.split(r"(?<=[.!?])\s+", text)
+            if part.strip()
+        ]
+
+    unique_lines = []
+    seen = set()
+    for line in lines:
+        normalized = line.lower()
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_lines.append(line)
+
+    critical = []
+    introduction = []
+    remainder = []
+    for index, line in enumerate(unique_lines):
+        low = line.lower()
+        if any(term in low for term in AI_JD_PRIORITY_TERMS):
+            critical.append((index, line))
+        elif index < 4:
+            introduction.append((index, line))
+        else:
+            remainder.append((index, line))
+
+    selected = []
+    used_chars = 0
+    for index, line in critical + introduction + remainder:
+        remaining = target_chars - used_chars
+        if remaining <= 0:
+            break
+        # A collapsed LinkedIn paragraph must not consume the complete budget
+        # before later experience/authorization/application lines are included.
+        snippet = line[:min(remaining, 1500)]
+        if snippet:
+            selected.append((index, snippet))
+            used_chars += len(snippet) + 1
+
+    selected.sort(key=lambda item: item[0])
+    return "\n".join(line for _, line in selected).strip()
 
 
 @lru_cache(maxsize=1)
@@ -425,8 +496,19 @@ def evaluate_job_relevance(job_details, role):
         recruiter_policy_prompt = HYBRID_QUALITY_PROMPT
     else:
         recruiter_policy_prompt = REAL_REQUISITION_PROMPT
+    ai_job_details = dict(job_details)
+    compact_description = compact_job_description(job_description)
+    ai_job_details["job_description"] = compact_description
+    ai_job_details["job_description_original_chars"] = len(job_description)
+    ai_job_details["job_description_sent_chars"] = len(compact_description)
+    if len(compact_description) < len(job_description):
+        print(
+            f"  [AI] Condensed JD: {len(compact_description)}/"
+            f"{len(job_description)} characters"
+        )
+
     payload = {
-        "job": job_details,
+        "job": ai_job_details,
         "candidate": _candidate_payload(role),
         "match_mode": AI_MATCH_MODE,
         "recruiter_policy": RECRUITER_POLICY,

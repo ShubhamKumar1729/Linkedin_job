@@ -16,8 +16,8 @@ Groq to evaluate candidate/job relevance before sending an application email.
    extracted recruiter emails to Groq for the relevance decision.
 6. Groq rejects wrong roles, excessive experience, incompatible authorization,
    and low-quality staffing/marketing contacts; location is intentionally ignored.
-7. Send approved direct-employer emails immediately; queue only specific,
-   named-client agency requisitions under a run-wide 20% cap.
+7. Send only Groq-approved direct-employer corporate emails; all staffing and
+   third-party contacts are excluded.
 8. Process 30 unique linked posts per role and keep scrolling to the end when
    fewer than 30 posts are available.
 
@@ -44,11 +44,13 @@ Important AI settings:
 GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=openai/gpt-oss-120b
 GROQ_FALLBACK_MODEL=openai/gpt-oss-20b
-AI_RELEVANCE_THRESHOLD=70
+AI_RELEVANCE_THRESHOLD=60
 AI_MATCH_MODE=role_quality
-RECRUITER_POLICY=hybrid_quality
+RECRUITER_POLICY=direct_employer_only
 GROQ_TIMEOUT_SECONDS=30
 GROQ_MAX_COMPLETION_TOKENS=1000
+GROQ_JOB_DESCRIPTION_RATIO_PERCENT=50
+GROQ_JOB_DESCRIPTION_MAX_CHARS=4000
 MAX_EXPERIENCE_YEARS=5
 TARGET_EMAILS_PER_RUN=20
 MAX_EMAILS_PER_RUN=30
@@ -69,13 +71,18 @@ work authorization, and the configured experience ceiling, while deliberately
 ignoring job and candidate location. With `MAX_EXPERIENCE_YEARS=5`, explicit
 requirements of 1-5 or 5+ years may pass while 6+ and 10-12 years are rejected.
 Candidate skills provide context but individual tool gaps are not a hard gate.
+The send threshold is `AI_RELEVANCE_THRESHOLD=60`, so relevant must be true and
+score must be at least 60.
 
-`RECRUITER_POLICY=hybrid_quality` prefers direct-employer corporate recruiters.
-Third-party recruiters qualify only for a specific active requisition with a
-named end-employer, one concrete role, clear terms, and corporate email. Generic
-staffing, hotlists, bench sales, personal-email contacts, and résumé collection
-remain blocked. Vetted agency sends are queued and capped at 20% of the final
-successful-send mix; highest AI scores are sent first.
+To reduce Groq token usage, the service sends a condensed decision-focused JD:
+roughly 50% of the post, capped at 4,000 characters. It prioritizes title,
+company, experience, requirements, authorization, skills, and application
+contact lines; the full post remains available for the outgoing email reference.
+
+`RECRUITER_POLICY=direct_employer_only` rejects every staffing, placement,
+consulting/vendor, third-party recruiting, bench-sales, and résumé-marketing
+contact. Approval requires a named employer and official corporate hiring
+email; personal email domains and unverified employers fail closed.
 
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.

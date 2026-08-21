@@ -57,7 +57,12 @@ def print_banner():
         f"  📧 Run Goal    : {TARGET_EMAILS_PER_RUN}-"
         f"{MAX_EMAILS_PER_RUN} quality emails"
     )
-    print(f"  🧩 Agency Cap  : {MAX_AGENCY_EMAIL_PERCENT}% of successful sends")
+    if RECRUITER_POLICY == "hybrid_quality":
+        print(
+            f"  🧩 Agency Cap  : {MAX_AGENCY_EMAIL_PERCENT}% of successful sends"
+        )
+    else:
+        print("  🧩 Agencies    : disabled")
     print(f"  🔎 Posts / Role: {POSTS_PER_ROLE} unique linked posts")
     print(
         f"  🔄 Search/Role : until post target or {NO_NEW_POST_PASSES} "
