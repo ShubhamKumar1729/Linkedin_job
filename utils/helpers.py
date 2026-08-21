@@ -1,4 +1,5 @@
 import re
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 EMAIL_REGEX = re.compile(
     r"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b"
@@ -60,6 +61,45 @@ def normalize_post_link(raw_link):
         return link
 
     return ""
+
+
+def normalize_application_url(raw_url):
+    """Normalize a LinkedIn Jobs or external company/ATS application URL."""
+    url = clean(str(raw_url or "")).replace("&amp;", "&").strip("<>\"'()[] ")
+    if not url.startswith(("https://", "http://")):
+        return ""
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return ""
+
+    host = parts.netloc.lower().split(":", 1)[0]
+    path = parts.path.lower()
+    if not host:
+        return ""
+
+    ats_hosts = (
+        "myworkdayjobs.com", "greenhouse.io", "lever.co", "ashbyhq.com",
+        "smartrecruiters.com", "icims.com", "jobvite.com",
+        "successfactors.com", "oraclecloud.com",
+    )
+    looks_actionable = (
+        (host.endswith("linkedin.com") and "/jobs/view/" in path)
+        or any(host.endswith(ats_host) for ats_host in ats_hosts)
+        or any(token in path for token in ("/careers", "/career", "/jobs", "/job/", "/apply"))
+    )
+    if not looks_actionable:
+        return ""
+
+    # Remove only marketing parameters; preserve requisition/job identifiers.
+    query = urlencode([
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_")
+        and key.lower() not in {"trk", "trackingid", "ref", "source"}
+    ])
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, query, ""))
 
 
 def extract_emails(text):
