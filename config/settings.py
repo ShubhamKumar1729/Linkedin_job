@@ -87,6 +87,12 @@ GROQ_MAX_RATE_LIMIT_WAIT_SECONDS = _env_int(
 GROQ_MAX_BLOCKING_WAIT_SECONDS = _env_int(
     "GROQ_MAX_BLOCKING_WAIT_SECONDS", 30, minimum=0, maximum=120
 )
+GROQ_CONNECTION_RETRIES = _env_int(
+    "GROQ_CONNECTION_RETRIES", 2, minimum=0, maximum=5
+)
+GROQ_CONNECTION_RETRY_DELAY_SECONDS = _env_int(
+    "GROQ_CONNECTION_RETRY_DELAY_SECONDS", 5, minimum=1, maximum=60
+)
 
 # ── Candidate Info ─────────────────────────────────────────
 CANDIDATE = {

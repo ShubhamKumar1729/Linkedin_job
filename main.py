@@ -42,7 +42,7 @@ from core.scraper      import (
     extract_job_details,
 )
 from core.filters      import filter_recruiter_emails
-from core.groq_service import evaluate_job_relevance
+from core.groq_service import check_groq_connection, evaluate_job_relevance
 from core.email_sender import send_email
 from core.tracker      import already_sent, load_sent_cache
 from utils.helpers     import clean, extract_emails
@@ -577,6 +577,11 @@ def main():
 
     if not RESUME_PATH.exists():
         print(f"\n❌ Resume not found: {RESUME_PATH}")
+        return
+
+    print("\n  Checking Groq API before starting LinkedIn...")
+    if not check_groq_connection():
+        print("  [STOP] Fix the Groq/network connection and run again.\n")
         return
 
     roles_for_run = select_start_role(ROLES)

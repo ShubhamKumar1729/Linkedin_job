@@ -63,6 +63,8 @@ DELAY_BETWEEN_AI_REQUESTS=15
 GROQ_RATE_LIMIT_COOLDOWN_SECONDS=60
 GROQ_MAX_RATE_LIMIT_WAIT_SECONDS=300
 GROQ_MAX_BLOCKING_WAIT_SECONDS=30
+GROQ_CONNECTION_RETRIES=2
+GROQ_CONNECTION_RETRY_DELAY_SECONDS=5
 MAX_EMAILS_PER_POST=5
 MAX_JOB_DESCRIPTION_CHARS=12000
 ```
@@ -105,8 +107,9 @@ posts or the safety pass limit is reached.
 AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If the primary model is
 rate-limited, the bot immediately tries `GROQ_FALLBACK_MODEL`. If both models
 are unavailable, `GROQ_MAX_BLOCKING_WAIT_SECONDS` caps any cooldown so a single
-job cannot freeze the run for several minutes. SDK-level 429 retries are disabled
-to prevent unbounded `Retry-After` sleeps. Failed checks are cached for the run.
+job cannot freeze the run. Transient API connection failures are retried twice
+with short backoff, and a startup connectivity check stops before LinkedIn work
+if Groq is unreachable. Failed checks remain fail-closed and send no email.
 
 `MAX_EMAILS_PER_POST` and `MAX_JOB_DESCRIPTION_CHARS` are technical DOM guards:
 they reject accidental LinkedIn parent containers that combine many unrelated

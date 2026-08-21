@@ -11,6 +11,8 @@ from config.settings import (
     CANDIDATE,
     DELAY_BETWEEN_AI_REQUESTS,
     GROQ_API_KEY,
+    GROQ_CONNECTION_RETRIES,
+    GROQ_CONNECTION_RETRY_DELAY_SECONDS,
     GROQ_FALLBACK_MODEL,
     GROQ_JOB_DESCRIPTION_MAX_CHARS,
     GROQ_JOB_DESCRIPTION_RATIO_PERCENT,
@@ -224,9 +226,31 @@ def _pace_request():
     _LAST_REQUEST_STARTED = time.monotonic()
 
 
+def _is_connection_error(exc):
+    error_name = type(exc).__name__
+    return (
+        error_name in {"APIConnectionError", "APITimeoutError", "ConnectError"}
+        or "Connection" in error_name
+        or "Timeout" in error_name
+    )
+
+
 def _create_completion(client, **request_options):
+    """Create a completion with bounded retries for transient connectivity."""
     _pace_request()
-    return client.chat.completions.create(**request_options)
+    for attempt in range(GROQ_CONNECTION_RETRIES + 1):
+        try:
+            return client.chat.completions.create(**request_options)
+        except Exception as exc:
+            if not _is_connection_error(exc) or attempt >= GROQ_CONNECTION_RETRIES:
+                raise
+            wait_seconds = GROQ_CONNECTION_RETRY_DELAY_SECONDS * (attempt + 1)
+            print(
+                f"  [AI] Connection failed; retry "
+                f"{attempt + 1}/{GROQ_CONNECTION_RETRIES} in "
+                f"{wait_seconds}s..."
+            )
+            time.sleep(wait_seconds)
 
 
 def _request_json_response(client, request_options):
@@ -326,6 +350,25 @@ def _get_client():
         timeout=GROQ_TIMEOUT_SECONDS,
         max_retries=0,
     )
+
+
+def check_groq_connection():
+    """Fail fast before browser work when Groq cannot be reached/authenticated."""
+    try:
+        _get_client().models.list()
+        print("  ✅ Groq API connection verified")
+        return True
+    except Exception as exc:
+        status_code = getattr(exc, "status_code", None)
+        if status_code in {401, 403}:
+            detail = f"authentication/permission error ({status_code})"
+        elif _is_connection_error(exc):
+            cause = getattr(exc, "__cause__", None)
+            detail = type(cause).__name__ if cause else type(exc).__name__
+        else:
+            detail = f"{type(exc).__name__}"
+        print(f"  ❌ Groq API is unavailable: {detail}")
+        return False
 
 
 def _candidate_payload(role):
@@ -585,6 +628,13 @@ def evaluate_job_relevance(job_details, role):
             detail = (
                 f"rate limit reached; next AI request will wait "
                 f"{wait_seconds:.0f} seconds"
+            )
+        elif _is_connection_error(exc):
+            cause = getattr(exc, "__cause__", None)
+            cause_name = type(cause).__name__ if cause else error_name
+            detail = (
+                f"connection failed after {GROQ_CONNECTION_RETRIES + 1} "
+                f"attempts ({cause_name})"
             )
         elif "Timeout" in error_name:
             detail = "request timed out"
