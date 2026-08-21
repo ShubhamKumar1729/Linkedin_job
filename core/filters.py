@@ -3,6 +3,8 @@ from utils.helpers import clean, normalize_email
 from config.settings import (
     GMAIL_ID,
     CANDIDATE,
+    CC_EMAILS,
+    BCC_EMAILS,
     BAD_EMAIL_PREFIXES,
     BAD_EMAIL_DOMAINS,
     BENCHSALES_BLOCK_KEYWORDS,
@@ -97,11 +99,14 @@ RECRUITER_EMAIL_SIGNALS = [
 
 
 def blocked_emails():
-    """Emails that must never receive a message."""
-    return {
+    """Own/copy-list addresses that must never become primary recipients."""
+    blocked = {
         normalize_email(GMAIL_ID),
         normalize_email(CANDIDATE.get("email", "")),
     }
+    blocked.update(normalize_email(email) for email in CC_EMAILS)
+    blocked.update(normalize_email(email) for email in BCC_EMAILS)
+    return {email for email in blocked if email}
 
 
 def is_valid_recruiter_email(email):

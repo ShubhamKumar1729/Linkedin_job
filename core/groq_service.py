@@ -268,8 +268,12 @@ def _validate_result(raw_result, allowed_emails):
     if relevant and RECRUITER_POLICY == "direct_employer_only":
         if recruiter_type != "direct_employer":
             raise ValueError("staffing/third-party recruiter cannot be approved")
-        if not employer.strip():
-            raise ValueError("direct-employer response has no named employer")
+        normalized_employer = employer.strip().lower()
+        if normalized_employer in {
+            "", "unknown", "unclear", "n/a", "na",
+            "not specified", "not verified",
+        }:
+            raise ValueError("direct-employer response has no verified employer")
         personal_domains = {
             "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
             "aol.com", "icloud.com", "proton.me", "protonmail.com",

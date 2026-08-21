@@ -139,9 +139,8 @@ def extract_poster_name(card):
 
 def get_post_link_from_card(page, card):
     """
-    Try two methods to extract LinkedIn post URL from a card.
-    Method 1: scan anchor hrefs inside the card
-    Method 2: click more options button and copy link
+    Extract a LinkedIn post URL from card/ancestor URNs, anchor hrefs, or the
+    post's control-menu copy-link action.
     """
 
     # Method 0 - activity URN on the card, its nearby wrapper, or child.
@@ -194,7 +193,14 @@ def get_post_link_from_card(page, card):
         buttons = card.locator("button").all()
         for btn in buttons:
             label = (btn.get_attribute("aria-label") or "").lower()
-            if any(w in label for w in ["more", "control", "actions"]):
+            is_post_menu = any(
+                phrase in label
+                for phrase in (
+                    "control menu", "more actions", "actions for post",
+                    "open menu",
+                )
+            )
+            if is_post_menu and "see more" not in label:
                 btn.click(timeout=2000)
                 page.wait_for_timeout(800)
 

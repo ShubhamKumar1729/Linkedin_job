@@ -1,3 +1,4 @@
+import hashlib
 import time
 import random
 from playwright.sync_api import sync_playwright
@@ -13,7 +14,7 @@ from config.settings import (
     RECRUITER_POLICY,
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
-    UNIQUE_EMAILS_PER_ROLE,
+    POSTS_PER_ROLE,
     MAX_PASSES_PER_ROLE,
     NO_NEW_POST_PASSES,
     MAX_EMAILS_PER_POST,
@@ -49,9 +50,9 @@ def print_banner():
     print(f"  📄 Resume      : {RESUME_PATH.name}")
     print(f"  🎯 Total Roles : {len(ROLES)}")
     print(f"  📧 Max / Run   : {MAX_EMAILS_PER_RUN} successful emails")
-    print(f"  🔎 Explore/Role: {UNIQUE_EMAILS_PER_ROLE} unique recruiter emails")
+    print(f"  🔎 Posts / Role: {POSTS_PER_ROLE} unique linked posts")
     print(
-        f"  🔄 Search/Role : until exploration target or {NO_NEW_POST_PASSES} "
+        f"  🔄 Search/Role : until post target or {NO_NEW_POST_PASSES} "
         f"no-new passes (safety max {MAX_PASSES_PER_ROLE})"
     )
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
@@ -117,8 +118,8 @@ def process_role(page, role, resume_path, sent_before_role):
     search_and_filter(page, role)
     page.wait_for_timeout(3000)
 
-    # Keep loading results until the unique-email exploration target, result
-    # exhaustion, global successful-send limit, or safety pass limit.
+    # Keep loading results until 30 unique linked posts are processed, the
+    # Past-24-Hours result set is exhausted, or a safety/run limit is reached.
     for pass_num in range(1, MAX_PASSES_PER_ROLE + 1):
 
         if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
@@ -135,32 +136,27 @@ def process_role(page, role, resume_path, sent_before_role):
         for card in cards:
             try:
                 card_text = clean(card.inner_text(timeout=2000))
-                card_key = card_text[:700]
-                if not card_key or card_key in seen_card_keys:
+                card_key = hashlib.sha256(
+                    card_text.encode("utf-8", errors="ignore")
+                ).hexdigest()
+                if not card_text or card_key in seen_card_keys:
                     continue
                 seen_card_keys.add(card_key)
                 new_cards.append((card, card_text, card_key))
             except Exception:
                 pass
 
-        if new_cards:
-            no_new_post_passes = 0
-        else:
-            no_new_post_passes += 1
-
         print(
-            f"\n  📋 Pass {pass_num} - Visible: {len(cards)} | "
-            f"New: {len(new_cards)}"
+            f"\n  📋 Pass {pass_num} - Visible candidates: {len(cards)} | "
+            f"Unseen cards: {len(new_cards)}"
         )
 
         if not cards:
             print("  [SKIP] No posts with recruiter emails visible.\n")
         elif not new_cards:
-            print(
-                f"  [SEARCH] No new posts loaded "
-                f"({no_new_post_passes}/{NO_NEW_POST_PASSES}).\n"
-            )
+            print("  [SEARCH] No unseen candidate cards in this pass.\n")
 
+        new_post_links_this_pass = 0
         for idx, (card, post_text, card_key) in enumerate(new_cards, start=1):
 
             if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
@@ -223,12 +219,14 @@ def process_role(page, role, resume_path, sent_before_role):
                     print("       [SKIP] Post already processed in this role")
                     continue
                 seen_post_links.add(post_link)
+                new_post_links_this_pass += 1
 
                 new_unique_emails = set(emails) - unique_emails_explored
                 unique_emails_explored.update(emails)
                 print(
-                    f"       [EXPLORE] Unique recruiter emails: "
-                    f"{len(unique_emails_explored)}/{UNIQUE_EMAILS_PER_ROLE}"
+                    f"       [EXPLORE] Posts: {len(seen_post_links)}/"
+                    f"{POSTS_PER_ROLE} | Unique recruiter emails: "
+                    f"{len(unique_emails_explored)}"
                     + (
                         f" (+{len(new_unique_emails)} new)"
                         if new_unique_emails
@@ -335,8 +333,8 @@ def process_role(page, role, resume_path, sent_before_role):
                         )
                         print(
                             f"       [STATS] Role: {role_sent} quality sent | "
-                            f"{len(unique_emails_explored)}/"
-                            f"{UNIQUE_EMAILS_PER_ROLE} unique explored"
+                            f"{len(seen_post_links)}/{POSTS_PER_ROLE} posts | "
+                            f"{len(unique_emails_explored)} unique emails"
                         )
                     else:
                         print(
@@ -348,16 +346,26 @@ def process_role(page, role, resume_path, sent_before_role):
                 print(f"  {idx:>3}. [ERROR] Job processing failed: {e}")
                 print("       [SKIP] Job skipped safely")
 
+        if new_post_links_this_pass:
+            no_new_post_passes = 0
+        else:
+            no_new_post_passes += 1
+
+        print(
+            f"\n  [SEARCH] Post progress: {len(seen_post_links)}/"
+            f"{POSTS_PER_ROLE}; new linked posts this pass: "
+            f"{new_post_links_this_pass}"
+        )
+
         if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
             break
 
         # Finish the current loaded batch, then move on once at least the
-        # configured number of unique recruiter emails has been explored.
-        if len(unique_emails_explored) >= UNIQUE_EMAILS_PER_ROLE:
+        # configured number of unique linked posts has been processed.
+        if len(seen_post_links) >= POSTS_PER_ROLE:
             print(
-                f"\n  [SEARCH] Exploration target reached for "
-                f"{role['name']}: {len(unique_emails_explored)}/"
-                f"{UNIQUE_EMAILS_PER_ROLE} unique emails."
+                f"\n  [SEARCH] Post target reached for {role['name']}: "
+                f"{len(seen_post_links)}/{POSTS_PER_ROLE}."
             )
             break
 
@@ -373,26 +381,27 @@ def process_role(page, role, resume_path, sent_before_role):
         if pass_num < MAX_PASSES_PER_ROLE:
             print(
                 f"\n  📜 Scrolling for more posts "
-                f"({len(unique_emails_explored)}/"
-                f"{UNIQUE_EMAILS_PER_ROLE} unique emails explored; "
+                f"({len(seen_post_links)}/{POSTS_PER_ROLE} posts; "
+                f"{len(unique_emails_explored)} unique emails; "
                 f"{role_sent} quality sent)..."
             )
             scroll_page(page, rounds=SCROLL_ROUNDS)
             print("  [SEARCH] Scroll complete; scanning newly loaded posts...")
 
     if sent_before_role + role_sent < MAX_EMAILS_PER_RUN:
-        if len(unique_emails_explored) >= UNIQUE_EMAILS_PER_ROLE:
-            exploration_status = "target achieved"
+        if len(seen_post_links) >= POSTS_PER_ROLE:
+            exploration_status = "30-post target achieved"
         elif no_new_post_passes >= NO_NEW_POST_PASSES:
             exploration_status = "Past-24-Hours results exhausted"
         else:
             exploration_status = "safety pass limit reached"
         pass_label = "pass" if pass_num == 1 else "passes"
         print(
-            f"\n  [STATS] {role['name']}: explored "
-            f"{len(unique_emails_explored)}/{UNIQUE_EMAILS_PER_ROLE} unique "
-            f"emails, sent {role_sent} quality applications "
-            f"({exploration_status}) after {pass_num} {pass_label}"
+            f"\n  [STATS] {role['name']}: processed "
+            f"{len(seen_post_links)}/{POSTS_PER_ROLE} unique posts, found "
+            f"{len(unique_emails_explored)} unique recruiter emails, sent "
+            f"{role_sent} quality applications ({exploration_status}) after "
+            f"{pass_num} {pass_label}"
         )
 
     return role_sent

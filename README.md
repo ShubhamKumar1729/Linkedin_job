@@ -18,8 +18,8 @@ Groq to evaluate candidate/job relevance before sending an application email.
    work authorization, and every staffing/third-party recruiting contact.
 7. Send only when Groq returns `relevant: true`, its score meets
    `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
-8. Explore up to 50 unique recruiter emails per role, send every quality direct
-   employer match, and stop early only when Past-24-Hours results are exhausted.
+8. Process 30 unique linked posts per role, send every quality direct-employer
+   match, and keep scrolling to the end when fewer than 30 posts are available.
 
 Groq only evaluates relevance. Email generation, sending, and sent-application
 tracking remain local to this project.
@@ -51,7 +51,7 @@ GROQ_MAX_RETRIES=2
 GROQ_MAX_COMPLETION_TOKENS=1000
 MAX_EXPERIENCE_YEARS=5
 MAX_EMAILS_PER_RUN=100
-UNIQUE_EMAILS_PER_ROLE=50
+POSTS_PER_ROLE=30
 MAX_PASSES_PER_ROLE=30
 NO_NEW_POST_PASSES=2
 DELAY_BETWEEN_AI_REQUESTS=15
@@ -76,10 +76,11 @@ contacts are rejected under this policy.
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.
 
-`UNIQUE_EMAILS_PER_ROLE=50` keeps each role active while the bot discovers and
-AI-checks unique recruiter contacts. It sends every direct-employer quality
-match and stops after at least 50 unique addresses are explored, two consecutive
-scroll passes load no new Past-24-Hours cards, or the safety pass limit is hit.
+`POSTS_PER_ROLE=30` keeps each role active until 30 unique linked posts have
+been processed. Every valid recruiter email found in those posts is checked and
+all direct-employer quality matches are sent. If fewer than 30 exist, scrolling
+continues until two consecutive passes load no new linked posts or the safety
+pass limit is reached.
 
 AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If Groq returns HTTP
 429, response reset headers (or `GROQ_RATE_LIMIT_COOLDOWN_SECONDS`) delay the
