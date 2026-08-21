@@ -21,7 +21,7 @@ from config.settings import (
     RECRUITER_POLICY,
     ROLES,
 )
-from utils.helpers import normalize_application_url, normalize_email
+from utils.helpers import normalize_email
 
 
 SYSTEM_PROMPT = """You evaluate LinkedIn hiring posts before an application is
@@ -35,13 +35,13 @@ Return exactly one JSON object with this schema:
   "reason": "a short factual explanation",
   "recruiter_type": "direct_employer, staffing_agency, or unclear",
   "employer": "the named end-employer, or an empty string",
-  "approved_emails": ["email addresses from job.recruiter_emails"],
-  "application_url": "one exact URL from job.application_urls, or empty"
+  "approved_emails": ["email addresses from job.recruiter_emails"]
 }
 
-Never invent an employer, email, or URL. approved_emails and application_url
-may contain only values supplied in the job payload. When relevant is false,
-approved_emails and application_url must be empty.
+Never invent an employer or email address. approved_emails may contain only
+addresses from job.recruiter_emails that are clearly presented as application
+contacts for that specific opening. When relevant is false, approved_emails
+must be empty.
 """
 
 ROLE_LOCATION_PROMPT = """Decision policy: ROLE + USA + CANDIDATE BASICS + RECRUITER.
@@ -86,10 +86,10 @@ requirements. Do not invent missing qualifications.
 
 DIRECT_EMPLOYER_PROMPT = """Recruiter policy: DIRECT EMPLOYER ONLY.
 A relevant result additionally requires a named end-employer and an in-house
-technology recruiter, hiring manager, official corporate application contact,
-or official company/ATS application URL representing that same employer. An
-approved email should use the employer's corporate domain; an approved URL must
-be clearly tied to that employer's own careers or ATS requisition.
+technology recruiter, hiring manager, or official corporate application
+contact representing that same employer. The approved email should use the
+employer's corporate domain or a clearly official employer-controlled hiring
+address.
 
 Always set relevant=false and recruiter_type=staffing_agency for any staffing,
 recruiting, placement, talent-supplier, consultancy/vendor, implementation
@@ -220,7 +220,7 @@ def _candidate_payload(role):
     }
 
 
-def _validate_result(raw_result, allowed_emails, allowed_application_urls):
+def _validate_result(raw_result, allowed_emails):
     """Validate and normalize Groq's structured relevance result."""
     if not isinstance(raw_result, dict):
         raise ValueError("response is not a JSON object")
@@ -231,7 +231,6 @@ def _validate_result(raw_result, allowed_emails, allowed_application_urls):
     recruiter_type = raw_result.get("recruiter_type")
     employer = raw_result.get("employer")
     approved_emails = raw_result.get("approved_emails")
-    application_url = raw_result.get("application_url")
 
     if not isinstance(relevant, bool):
         raise ValueError("'relevant' must be a boolean")
@@ -247,8 +246,6 @@ def _validate_result(raw_result, allowed_emails, allowed_application_urls):
         raise ValueError("'employer' must be a string")
     if not isinstance(approved_emails, list):
         raise ValueError("'approved_emails' must be a list")
-    if not isinstance(application_url, str):
-        raise ValueError("'application_url' must be a string")
 
     allowed = {normalize_email(email) for email in allowed_emails}
     normalized_approved = []
@@ -261,19 +258,10 @@ def _validate_result(raw_result, allowed_emails, allowed_application_urls):
         if normalized_email not in normalized_approved:
             normalized_approved.append(normalized_email)
 
-    allowed_urls = {
-        normalize_application_url(url)
-        for url in allowed_application_urls
-        if normalize_application_url(url)
-    }
-    normalized_application_url = normalize_application_url(application_url)
-    if application_url and normalized_application_url not in allowed_urls:
-        raise ValueError("Groq returned an application URL not supplied by the post")
-
-    if relevant and not normalized_approved and not normalized_application_url:
-        raise ValueError("relevant response has no approved email or application URL")
-    if not relevant and (normalized_approved or normalized_application_url):
-        raise ValueError("irrelevant response contains an approved action")
+    if relevant and not normalized_approved:
+        raise ValueError("relevant response has no approved recruiter email")
+    if not relevant and normalized_approved:
+        raise ValueError("irrelevant response contains approved emails")
     if relevant and recruiter_type == "unclear":
         raise ValueError("relevant response has an unclear recruiter type")
 
@@ -307,11 +295,10 @@ def _validate_result(raw_result, allowed_emails, allowed_application_urls):
         "recruiter_type": recruiter_type,
         "employer": employer.strip(),
         "approved_emails": normalized_approved,
-        "application_url": normalized_application_url,
     }
 
 
-def _parse_response(response, allowed_emails, allowed_application_urls):
+def _parse_response(response, allowed_emails):
     """Extract and validate JSON returned by a Groq chat completion."""
     if not response or not getattr(response, "choices", None):
         raise ValueError("Groq returned no choices")
@@ -340,11 +327,7 @@ def _parse_response(response, allowed_emails, allowed_application_urls):
             raise
         raw_result, _ = json.JSONDecoder().raw_decode(content[object_start:])
 
-    return _validate_result(
-        raw_result,
-        allowed_emails,
-        allowed_application_urls,
-    )
+    return _validate_result(raw_result, allowed_emails)
 
 
 def evaluate_job_relevance(job_details, role):
@@ -367,15 +350,8 @@ def evaluate_job_relevance(job_details, role):
         return None
 
     recruiter_emails = job_details.get("recruiter_emails", [])
-    application_urls = job_details.get("application_urls", [])
-    if not isinstance(recruiter_emails, list):
-        print("  [AI] Invalid job data: recruiter emails must be a list")
-        return None
-    if not isinstance(application_urls, list):
-        print("  [AI] Invalid job data: application URLs must be a list")
-        return None
-    if not recruiter_emails and not application_urls:
-        print("  [AI] Invalid job data: no email or application URL")
+    if not isinstance(recruiter_emails, list) or not recruiter_emails:
+        print("  [AI] Invalid job data: missing recruiter emails")
         return None
 
     policy_prompt = (
@@ -444,7 +420,7 @@ def evaluate_job_relevance(job_details, role):
             print("  [AI] JSON mode failed; retrying plain completion...")
             response = _create_completion(client, **request_options)
 
-        return _parse_response(response, recruiter_emails, application_urls)
+        return _parse_response(response, recruiter_emails)
 
     except Exception as exc:
         error_name = type(exc).__name__

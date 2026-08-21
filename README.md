@@ -1,25 +1,25 @@
 # LinkedIn Job Application Bot
 
 This Python automation searches recent LinkedIn posts for configured roles,
-extracts recruiter emails and direct company/ATS application links, and asks
-Groq to evaluate candidate/job relevance before sending or saving an action.
+extracts recruiter email addresses, applies the existing job filters, and asks
+Groq to evaluate candidate/job relevance before sending an application email.
 
 ## Workflow
 
 1. Search LinkedIn posts for each configured role.
 2. Extract the complete visible post, structured job details, recruiter email,
-   direct company/ATS application links, recruiter name, and post URL.
-3. Validate deterministic requirements: non-empty job text, valid action/link,
-   and duplicate-send/save status.
-4. Skip prior emails and direct-job links already recorded in output CSV files.
+   recruiter name, and post URL.
+3. Validate only deterministic requirements: non-empty job text, recruiter
+   email format, post link, and duplicate-send status.
+4. Skip email/post pairs already recorded in `output/sent_emails.csv`.
 5. Send the complete job description, target role, candidate details, and
    extracted recruiter emails to Groq for the relevance decision.
 6. Groq rejects wrong roles, non-US jobs, excessive experience, incompatible
    work authorization, and every staffing/third-party recruiting contact.
-7. For approved direct employers, send verified corporate emails and save
-   official ATS/company apply links to `output/direct_jobs.csv`.
-8. Process 30 unique actionable posts per role and keep scrolling to the end
-   when fewer than 30 are available.
+7. Send only when Groq returns `relevant: true`, its score meets
+   `AI_RELEVANCE_THRESHOLD`, and it approves the specific recruiter email.
+8. Process 30 unique linked posts per role, send every quality direct-employer
+   match, and keep scrolling to the end when fewer than 30 posts are available.
 
 Groq only evaluates relevance. Email generation, sending, and sent-application
 tracking remain local to this project.
@@ -74,14 +74,13 @@ hiring manager, or official corporate application email. Personal email-domain
 contacts are rejected under this policy.
 
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
-`.env`. For direct employers, use short queries such as `Data Analyst hiring
-USA`; adding `email` strongly biases results toward staffing agencies.
+`.env`; changing that value directly changes the next run's search query.
 
-`POSTS_PER_ROLE=30` keeps each role active until 30 unique actionable posts
-(with an email or apply link) have been processed. Corporate emails are sent;
-official company/ATS links are saved for manual application. If fewer than 30
-exist, scrolling continues until two consecutive passes load no new posts or
-the safety pass limit is reached.
+`POSTS_PER_ROLE=30` keeps each role active until 30 unique linked posts have
+been processed. Every valid recruiter email found in those posts is checked and
+all direct-employer quality matches are sent. If fewer than 30 exist, scrolling
+continues until two consecutive passes load no new linked posts or the safety
+pass limit is reached.
 
 AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If Groq returns HTTP
 429, response reset headers (or `GROQ_RATE_LIMIT_COOLDOWN_SECONDS`) delay the
@@ -113,8 +112,6 @@ in the terminal when prompted. The persistent browser profile is stored in
 - The complete visible LinkedIn post, full configured candidate details,
   role-specific skills, preferred roles, and experience ceiling are sent to
   Groq. The résumé PDF itself is not uploaded or parsed.
-- Sent emails are tracked in `output/sent_emails.csv`; approved direct-employer
-  ATS/company links are deduplicated in `output/direct_jobs.csv`.
 - A Groq timeout, rate limit, API error, or invalid response fails closed: that
   job is skipped and no email is sent.
 - Model availability and API rate limits depend on the Groq account and plan.

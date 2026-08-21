@@ -1,12 +1,7 @@
 import re
 from urllib.parse import urljoin
 from config.settings import MAX_EMAILS_PER_POST, MAX_JOB_DESCRIPTION_CHARS
-from utils.helpers import (
-    clean,
-    extract_emails,
-    normalize_application_url,
-    normalize_post_link,
-)
+from utils.helpers import clean, extract_emails, normalize_post_link
 
 JUNK_PHRASES = [
     "home my network jobs messaging",
@@ -17,12 +12,6 @@ JUNK_PHRASES = [
 ]
 
 EMAIL_CONTAINER_SELECTOR = "main div"
-APPLICATION_LINK_SELECTOR = (
-    "a[href*='/jobs/view/'], a[href*='myworkdayjobs.com'], "
-    "a[href*='greenhouse.io'], a[href*='lever.co'], "
-    "a[href*='ashbyhq.com'], a[href*='smartrecruiters.com'], "
-    "a[href*='icims.com'], a[href*='/careers'], a[href*='/apply']"
-)
 
 CARD_SELECTORS = [
     "div.feed-shared-update-v2",
@@ -244,33 +233,10 @@ def get_post_link_from_card(page, card):
     return ""
 
 
-def extract_application_links(card):
-    """Return unique LinkedIn Jobs/company ATS links present in a post card."""
-    try:
-        hrefs = card.evaluate("""
-            el => Array.from(el.querySelectorAll('a[href]'))
-                .map(a => a.href || a.getAttribute('href'))
-                .filter(Boolean)
-        """)
-    except Exception:
-        return []
-
-    links = []
-    seen = set()
-    for href in hrefs:
-        normalized = normalize_application_url(
-            urljoin("https://www.linkedin.com", href)
-        )
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            links.append(normalized)
-    return links
-
-
 def get_cards(page):
     """
-    Scrape visible actionable posts containing recruiter emails or application
-    links. Returns deduplicated card locators.
+    Scrape all visible LinkedIn post cards that contain emails.
+    Returns deduplicated list of card elements.
     """
 
     # Expand truncated post text. Use only LinkedIn's dedicated expansion
@@ -295,39 +261,32 @@ def get_cards(page):
     cards = []
     seen = set()
 
-    # Read candidate text in bulk. Sources based on a recruiter email and on an
-    # explicit LinkedIn Jobs/company ATS link are both actionable.
-    sources = []
+    # Read candidate text in bulk. The previous `main div` fallback called
+    # inner_text() separately on thousands of nested elements as the page grew,
+    # which could make later scroll passes appear frozen for several minutes.
     for selector in CARD_SELECTORS:
         try:
             locator = page.locator(selector)
             if selector == EMAIL_CONTAINER_SELECTOR:
+                # Filter inside the browser before materializing text. This
+                # preserves LinkedIn's current unclassed post containers while
+                # avoiding per-element round trips across every nested div.
                 locator = locator.filter(has_text=EMAIL_TEXT_PATTERN)
-            sources.append((locator, False))
-        except Exception:
-            pass
 
-    try:
-        ats_locator = page.locator("main div").filter(
-            has=page.locator(APPLICATION_LINK_SELECTOR)
-        )
-        sources.append((ats_locator, True))
-    except Exception:
-        pass
-
-    for locator, allows_application_only in sources:
-        try:
             texts = locator.all_inner_texts()
             for index, raw_text in enumerate(texts):
                 text = clean(raw_text)
 
-                if len(text) < 40 or len(text) > MAX_JOB_DESCRIPTION_CHARS:
+                if len(text) < 40:
+                    continue
+
+                # These are parent-page containers combining unrelated posts,
+                # not complete individual job descriptions.
+                if len(text) > MAX_JOB_DESCRIPTION_CHARS:
                     continue
 
                 emails = extract_emails(text)
-                if len(emails) > MAX_EMAILS_PER_POST:
-                    continue
-                if not emails and not allows_application_only:
+                if not emails or len(emails) > MAX_EMAILS_PER_POST:
                     continue
 
                 low = text.lower()

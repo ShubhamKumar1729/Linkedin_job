@@ -33,7 +33,6 @@ from core.browser      import (
 from core.scraper      import (
     get_cards,
     get_post_link_from_card,
-    extract_application_links,
     extract_poster_name,
     extract_job_details,
 )
@@ -41,11 +40,6 @@ from core.filters      import filter_recruiter_emails
 from core.groq_service import evaluate_job_relevance
 from core.email_sender import send_email
 from core.tracker      import already_sent, load_sent_cache
-from core.direct_job_tracker import (
-    direct_job_already_saved,
-    load_direct_job_cache,
-    save_direct_job,
-)
 from utils.helpers     import clean, extract_emails
 
 
@@ -113,7 +107,6 @@ def process_role(page, role, resume_path, sent_before_role):
     isolated so the next visible post can still be processed.
     """
     role_sent = 0
-    role_direct_jobs = 0
     unique_emails_explored = set()
     ai_results_by_post = {}
     seen_card_keys = set()
@@ -183,21 +176,12 @@ def process_role(page, role, resume_path, sent_before_role):
                 company = job_details["company"]
                 print(f"\n  {idx:>3}. [JOB] Found: {job_title} - {company}")
 
+                # Find recruiter email before evaluating the job.
                 emails = filter_recruiter_emails(extract_emails(post_text))
-                application_urls = extract_application_links(card)
-                if not emails and not application_urls:
-                    print("       [SKIP] No recruiter email or application link")
+                if not emails:
+                    print("       [SKIP] Missing or invalid recruiter email")
                     continue
-                if emails:
-                    print(
-                        f"       [EMAIL] Recruiter email found: "
-                        f"{', '.join(emails)}"
-                    )
-                if application_urls:
-                    print(
-                        f"       [APPLY] Application link found: "
-                        f"{application_urls[0]}"
-                    )
+                print(f"       [EMAIL] Recruiter email found: {', '.join(emails)}")
 
                 # A real LinkedIn job post normally has only a small number of
                 # contacts and a bounded post body. Larger values indicate that
@@ -221,28 +205,20 @@ def process_role(page, role, resume_path, sent_before_role):
                 print("       [DATA] Basic data valid; Groq will decide")
 
                 post_link = get_post_link_from_card(page, card)
-                if post_link:
-                    post_identity = post_link
-                elif application_urls:
-                    # An official apply URL is sufficient to save/track a
-                    # direct job even when LinkedIn hides the post permalink.
-                    post_identity = f"apply:{application_urls[0]}"
-                    print(
-                        "       [APPLY] LinkedIn post link unavailable; "
-                        "using application link as identity"
-                    )
-                else:
+                if not post_link:
                     failures = link_failure_counts.get(card_key, 0) + 1
                     link_failure_counts[card_key] = failures
                     if failures < 2:
+                        # Give LinkedIn one later pass to finish rendering the
+                        # card's permalink/URN without treating it as new data.
                         seen_card_keys.discard(card_key)
                     print("       [SKIP] Missing or invalid LinkedIn post link")
                     continue
 
-                if post_identity in seen_post_links:
+                if post_link in seen_post_links:
                     print("       [SKIP] Post already processed in this role")
                     continue
-                seen_post_links.add(post_identity)
+                seen_post_links.add(post_link)
                 new_post_links_this_pass += 1
 
                 new_unique_emails = set(emails) - unique_emails_explored
@@ -261,46 +237,23 @@ def process_role(page, role, resume_path, sent_before_role):
                 # Avoid an unnecessary AI request when every email/post pair
                 # has already been recorded by the existing CSV tracker.
                 unsent_emails = []
-                if not post_link and emails:
-                    print(
-                        "       [EMAIL] Email send disabled for this card "
-                        "because its LinkedIn post link is unavailable"
-                    )
-                else:
-                    for email in emails:
-                        if already_sent(email, post_link):
-                            print(
-                                f"       [SKIP] Duplicate application already sent: "
-                                f"{email}"
-                            )
-                        else:
-                            unsent_emails.append(email)
-
-                unsaved_application_urls = [
-                    url for url in application_urls
-                    if not direct_job_already_saved(url, post_link)
-                ]
-                for url in application_urls:
-                    if url not in unsaved_application_urls:
+                for email in emails:
+                    if already_sent(email, post_link):
                         print(
-                            f"       [SKIP] Direct application link already saved: "
-                            f"{url}"
+                            f"       [SKIP] Duplicate application already sent: "
+                            f"{email}"
                         )
+                    else:
+                        unsent_emails.append(email)
 
-                if not unsent_emails and not unsaved_application_urls:
+                if not unsent_emails:
                     continue
 
                 job_details["recruiter_emails"] = unsent_emails
-                job_details["application_urls"] = unsaved_application_urls
-                ai_cache_key = (
-                    post_identity,
-                    tuple(sorted(unsent_emails)),
-                    tuple(sorted(unsaved_application_urls)),
-                )
+                ai_cache_key = (post_link, tuple(sorted(unsent_emails)))
 
                 recruiter_name = extract_poster_name(card)
-                if post_link:
-                    print(f"       🔗 {post_link}")
+                print(f"       🔗 {post_link}")
                 print(f"       👤 {recruiter_name or 'Name not found'}")
 
                 # Groq only decides relevance and which supplied recruiter
@@ -331,11 +284,10 @@ def process_role(page, role, resume_path, sent_before_role):
                     email for email in unsent_emails
                     if email in approved_email_set
                 ]
-                application_url = ai_result["application_url"]
                 ai_approved = (
                     ai_result["relevant"]
                     and score >= AI_RELEVANCE_THRESHOLD
-                    and bool(emails_to_send or application_url)
+                    and bool(emails_to_send)
                 )
                 decision = "RELEVANT" if ai_approved else "NOT RELEVANT"
 
@@ -352,26 +304,10 @@ def process_role(page, role, resume_path, sent_before_role):
                     print("       [SKIP] Job skipped")
                     continue
 
-                if emails_to_send:
-                    print(
-                        "       [AI] Direct-employer email(s): "
-                        + ", ".join(emails_to_send)
-                    )
-
-                if application_url:
-                    saved = save_direct_job(
-                        role=role,
-                        job_details=job_details,
-                        application_url=application_url,
-                        post_link=post_link,
-                        reason=ai_result["reason"],
-                    )
-                    if saved:
-                        role_direct_jobs += 1
-                        print(
-                            f"       [APPLY] Direct-employer job saved: "
-                            f"{application_url}"
-                        )
+                print(
+                    "       [AI] Genuine recruiter email(s): "
+                    + ", ".join(emails_to_send)
+                )
 
                 for email in emails_to_send:
                     if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
@@ -398,8 +334,7 @@ def process_role(page, role, resume_path, sent_before_role):
                         print(
                             f"       [STATS] Role: {role_sent} quality sent | "
                             f"{len(seen_post_links)}/{POSTS_PER_ROLE} posts | "
-                            f"{len(unique_emails_explored)} unique emails | "
-                            f"{role_direct_jobs} direct apply links"
+                            f"{len(unique_emails_explored)} unique emails"
                         )
                     else:
                         print(
@@ -455,7 +390,7 @@ def process_role(page, role, resume_path, sent_before_role):
 
     if sent_before_role + role_sent < MAX_EMAILS_PER_RUN:
         if len(seen_post_links) >= POSTS_PER_ROLE:
-            exploration_status = "post target achieved"
+            exploration_status = "30-post target achieved"
         elif no_new_post_passes >= NO_NEW_POST_PASSES:
             exploration_status = "Past-24-Hours results exhausted"
         else:
@@ -465,9 +400,8 @@ def process_role(page, role, resume_path, sent_before_role):
             f"\n  [STATS] {role['name']}: processed "
             f"{len(seen_post_links)}/{POSTS_PER_ROLE} unique posts, found "
             f"{len(unique_emails_explored)} unique recruiter emails, sent "
-            f"{role_sent} quality emails, saved {role_direct_jobs} direct "
-            f"application links ({exploration_status}) after {pass_num} "
-            f"{pass_label}"
+            f"{role_sent} quality applications ({exploration_status}) after "
+            f"{pass_num} {pass_label}"
         )
 
     return role_sent
@@ -498,7 +432,6 @@ def main():
 
     print_banner()
     load_sent_cache()
-    load_direct_job_cache()
 
     grand_total  = 0
     role_summary = []
@@ -582,8 +515,7 @@ def main():
     print(f"  {'─'*35} {'─'*6}")
     print(f"  {'TOTAL':<35} {grand_total:>6}")
     print("═" * 62)
-    print("\n  📁 Email log : output/sent_emails.csv")
-    print("  📁 Direct jobs: output/direct_jobs.csv\n")
+    print(f"\n  📁 Log: output/sent_emails.csv\n")
 
 
 if __name__ == "__main__":

@@ -25,9 +25,8 @@ BASE_DIR    = Path(__file__).parent.parent
 OUTPUT_DIR  = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-SENT_FILE        = OUTPUT_DIR / "sent_emails.csv"
-DIRECT_JOBS_FILE = OUTPUT_DIR / "direct_jobs.csv"
-PROFILE_DIR      = str(BASE_DIR / "linkedin_profile_data")
+SENT_FILE    = OUTPUT_DIR / "sent_emails.csv"
+PROFILE_DIR  = str(BASE_DIR / "linkedin_profile_data")
 
 RESUME_FILENAME = os.getenv("RESUME_FILENAME", "resume.pdf").strip()
 RESUME_PATH     = OUTPUT_DIR / RESUME_FILENAME
