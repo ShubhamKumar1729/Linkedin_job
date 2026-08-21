@@ -11,17 +11,14 @@ JUNK_PHRASES = [
     "content type",
 ]
 
-POST_LINK_CARD_SELECTOR = (
-    "main div:has(a[href*='/posts/']), "
-    "main div:has(a[href*='/feed/update/'])"
-)
+EMAIL_CONTAINER_SELECTOR = "main div"
 
 CARD_SELECTORS = [
     "div.feed-shared-update-v2",
     "li.reusable-search__result-container",
     "div[data-urn]",
     "article",
-    POST_LINK_CARD_SELECTOR,
+    EMAIL_CONTAINER_SELECTOR,
 ]
 
 EMAIL_TEXT_PATTERN = re.compile(
@@ -264,7 +261,10 @@ def get_cards(page):
     for selector in CARD_SELECTORS:
         try:
             locator = page.locator(selector)
-            if selector == POST_LINK_CARD_SELECTOR:
+            if selector == EMAIL_CONTAINER_SELECTOR:
+                # Filter inside the browser before materializing text. This
+                # preserves LinkedIn's current unclassed post containers while
+                # avoiding per-element round trips across every nested div.
                 locator = locator.filter(has_text=EMAIL_TEXT_PATTERN)
 
             texts = locator.all_inner_texts()
