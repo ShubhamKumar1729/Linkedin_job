@@ -58,6 +58,7 @@ MAX_AGENCY_EMAIL_PERCENT=20
 POSTS_PER_ROLE=30
 MAX_PASSES_PER_ROLE=30
 NO_NEW_POST_PASSES=2
+LINKEDIN_DATE_FILTER=past-week
 DELAY_BETWEEN_AI_REQUESTS=15
 GROQ_RATE_LIMIT_COOLDOWN_SECONDS=60
 GROQ_MAX_RATE_LIMIT_WAIT_SECONDS=300
@@ -86,6 +87,10 @@ email; personal email domains and unverified employers fail closed.
 
 LinkedIn search always uses each `ROLE_N_SEARCH` value exactly as written in
 `.env`; changing that value directly changes the next run's search query.
+`LINKEDIN_DATE_FILTER=past-week` includes posts marked `2d` while avoiding very
+old openings. Available values are `past-24h`, `past-week`, `past-month`, and
+`any-time`. Company size is never a filter: startups and large enterprises are
+judged by the same genuine-opening and corporate-contact rules.
 
 `TARGET_EMAILS_PER_RUN=20` is a quality goal and `MAX_EMAILS_PER_RUN=30` is a
 hard successful-send cap. Neither forces low-quality messages: the final count

@@ -1,5 +1,10 @@
 import time
-from config.settings import PROFILE_DIR, SCROLL_ROUNDS
+from config.settings import (
+    LINKEDIN_DATE_FILTER,
+    LINKEDIN_DATE_FILTER_LABEL,
+    PROFILE_DIR,
+    SCROLL_ROUNDS,
+)
 
 
 def launch_browser(playwright):
@@ -147,7 +152,7 @@ def search_and_filter(page, role):
     Automatically:
     1. Go to LinkedIn search URL directly
     2. Filter by Posts tab
-    3. Apply Past 24 Hours filter
+    3. Apply the configured date-window filter
     """
     # Always use exactly what the user configured in .env. Relevance,
     # location, and recruiter quality are decided later by Groq.
@@ -166,6 +171,8 @@ def search_and_filter(page, role):
             f"?keywords={encoded_query}"
             f"&sortBy=date_posted"
         )
+        if LINKEDIN_DATE_FILTER != "any-time":
+            search_url += f"&datePosted={LINKEDIN_DATE_FILTER}"
 
         page.goto(search_url, timeout=30000)
         page.wait_for_timeout(4000)
@@ -176,8 +183,8 @@ def search_and_filter(page, role):
         # Fallback - try search bar
         _try_searchbar(page, search_query)
 
-    # ── Step 2: Apply Past 24 Hours Filter ────────────────
-    _apply_24h_filter(page)
+    # ── Step 2: Apply configured date filter ──────────────
+    _apply_date_filter(page)
 
     # Ensure no filter popover intercepts wheel/keyboard scrolling, then start
     # result exploration from the top of the page.
@@ -262,8 +269,12 @@ def _click_posts_tab(page):
         print(f"  ⚠  Posts tab error: {e}")
 
 
-def _apply_24h_filter(page):
-    """Apply Past 24 Hours date filter."""
+def _apply_date_filter(page):
+    """Apply the configured LinkedIn content-search date filter."""
+    if LINKEDIN_DATE_FILTER == "any-time":
+        print("  ✅ Date filter: Any time")
+        return
+
     try:
         page.wait_for_timeout(2000)
 
@@ -294,51 +305,62 @@ def _apply_24h_filter(page):
                 current_url = page.url
                 if "datePosted" not in current_url:
                     if "?" in current_url:
-                        new_url = current_url + "&datePosted=past-24h"
+                        new_url = (
+                            current_url
+                            + f"&datePosted={LINKEDIN_DATE_FILTER}"
+                        )
                     else:
-                        new_url = current_url + "?datePosted=past-24h"
+                        new_url = (
+                            current_url
+                            + f"?datePosted={LINKEDIN_DATE_FILTER}"
+                        )
                     page.goto(new_url, timeout=30000)
                     page.wait_for_timeout(3000)
-                    print("  ✅ 24h filter applied via URL!")
+                    print(
+                        f"  ✅ {LINKEDIN_DATE_FILTER_LABEL} filter applied via URL!"
+                    )
                     return
+                print(
+                    f"  ✅ {LINKEDIN_DATE_FILTER_LABEL} already applied via URL!"
+                )
             except Exception:
                 pass
             return
 
-        # ── Click Past 24 Hours option ─────────────────────
-        hour_selectors = [
-            "label:has-text('Past 24 hours')",
-            "span:has-text('Past 24 hours')",
-            "div:has-text('Past 24 hours')",
-            "li:has-text('Past 24 hours')",
+        # ── Click configured date option ───────────────────
+        date_option_selectors = [
+            f"label:has-text('{LINKEDIN_DATE_FILTER_LABEL}')",
+            f"span:has-text('{LINKEDIN_DATE_FILTER_LABEL}')",
+            f"div:has-text('{LINKEDIN_DATE_FILTER_LABEL}')",
+            f"li:has-text('{LINKEDIN_DATE_FILTER_LABEL}')",
         ]
 
-        clicked_24h = False
-        for selector in hour_selectors:
+        clicked_date = False
+        for selector in date_option_selectors:
             try:
                 opt = page.locator(selector).first
                 if opt.count() > 0:
                     opt.click(timeout=3000)
                     page.wait_for_timeout(1000)
-                    clicked_24h = True
-                    print("  ✅ Past 24 hours selected!")
+                    clicked_date = True
+                    print(f"  ✅ {LINKEDIN_DATE_FILTER_LABEL} selected!")
                     break
             except Exception:
                 pass
 
-        if not clicked_24h:
+        if not clicked_date:
             try:
                 page.get_by_text(
-                    "Past 24 hours", exact=True
+                    LINKEDIN_DATE_FILTER_LABEL, exact=True
                 ).click(timeout=3000)
                 page.wait_for_timeout(1000)
-                clicked_24h = True
-                print("  ✅ Past 24 hours selected!")
+                clicked_date = True
+                print(f"  ✅ {LINKEDIN_DATE_FILTER_LABEL} selected!")
             except Exception:
                 pass
 
-        if not clicked_24h:
-            print("  ⚠  24h option not found")
+        if not clicked_date:
+            print(f"  ⚠  {LINKEDIN_DATE_FILTER_LABEL} option not found")
 
         # ── Click Show Results / Apply button ──────────────
         show_selectors = [
@@ -353,7 +375,9 @@ def _apply_24h_filter(page):
                 if btn.count() > 0:
                     btn.click(timeout=3000)
                     page.wait_for_timeout(3000)
-                    print("  ✅ Results loaded with 24h filter!")
+                    print(
+                        f"  ✅ Results loaded with {LINKEDIN_DATE_FILTER_LABEL} filter!"
+                    )
                     return
             except Exception:
                 pass

@@ -135,7 +135,10 @@ Gmail/Yahoo/Outlook-style contacts and any unclear relationship. Generic job
 alerts and résumé collection posts also fail. Do not approve an agency merely
 because it calls its contact a recruiter or uses a corporate domain.
 
-Only recruiter_type=direct_employer may ever return relevant=true.
+Company size is irrelevant: startups, mid-size companies, and large enterprises
+must be treated equally. A named company posting its own opening with an official
+matching corporate address such as careers@company-domain is a valid direct
+employer signal. Only recruiter_type=direct_employer may return relevant=true.
 """
 
 REAL_REQUISITION_PROMPT = """Recruiter policy: REAL REQUISITION.

@@ -25,6 +25,7 @@ from config.settings import (
     MAX_EXPERIENCE_YEARS,
     MAX_JOB_DESCRIPTION_CHARS,
     SCROLL_ROUNDS,
+    LINKEDIN_DATE_FILTER_LABEL,
     WAIT_BETWEEN_ROLES_MIN,
     WAIT_BETWEEN_ROLES_MAX,
 )
@@ -75,6 +76,7 @@ def print_banner():
     print(f"  🏢 Recruiters  : {RECRUITER_POLICY}")
     print(f"  🧑 Experience  : jobs requiring up to {MAX_EXPERIENCE_YEARS} years")
     print(f"  ✅ AI Threshold: {AI_RELEVANCE_THRESHOLD}")
+    print(f"  📅 Date Window : {LINKEDIN_DATE_FILTER_LABEL}")
     print(f"  ⏳ Wait/Role   : "
           f"{WAIT_BETWEEN_ROLES_MIN}-{WAIT_BETWEEN_ROLES_MAX} seconds")
     print("═" * 62)
@@ -135,7 +137,7 @@ def process_role(page, role, resume_path, sent_before_role, agency_queue):
     page.wait_for_timeout(3000)
 
     # Keep loading results until 30 unique linked posts are processed, the
-    # Past-24-Hours result set is exhausted, or a safety/run limit is reached.
+    # configured date-window results are exhausted, or a safety/run limit.
     for pass_num in range(1, MAX_PASSES_PER_ROLE + 1):
 
         if sent_before_role + role_sent >= MAX_EMAILS_PER_RUN:
@@ -409,11 +411,11 @@ def process_role(page, role, resume_path, sent_before_role, agency_queue):
             )
             break
 
-        # Two consecutive passes without a new card are treated as exhaustion
-        # of the currently available Past-24-Hours result set.
+        # Consecutive passes without a new link indicate exhaustion of the
+        # currently configured LinkedIn date window.
         if no_new_post_passes >= NO_NEW_POST_PASSES:
             print(
-                f"\n  [SEARCH] No new Past-24-Hours posts after "
+                f"\n  [SEARCH] No new {LINKEDIN_DATE_FILTER_LABEL} posts after "
                 f"{no_new_post_passes} passes; role results exhausted."
             )
             break
@@ -432,7 +434,9 @@ def process_role(page, role, resume_path, sent_before_role, agency_queue):
         if len(seen_post_links) >= POSTS_PER_ROLE:
             exploration_status = "30-post target achieved"
         elif no_new_post_passes >= NO_NEW_POST_PASSES:
-            exploration_status = "Past-24-Hours results exhausted"
+            exploration_status = (
+                f"{LINKEDIN_DATE_FILTER_LABEL} results exhausted"
+            )
         else:
             exploration_status = "safety pass limit reached"
         pass_label = "pass" if pass_num == 1 else "passes"
