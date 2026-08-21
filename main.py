@@ -14,6 +14,8 @@ from config.settings import (
     RECRUITER_POLICY,
     AI_RELEVANCE_THRESHOLD,
     MAX_EMAILS_PER_RUN,
+    TARGET_EMAILS_PER_RUN,
+    MAX_AGENCY_EMAIL_PERCENT,
     POSTS_PER_ROLE,
     MAX_PASSES_PER_ROLE,
     NO_NEW_POST_PASSES,
@@ -49,7 +51,11 @@ def print_banner():
     print("═" * 62)
     print(f"  📄 Resume      : {RESUME_PATH.name}")
     print(f"  🎯 Total Roles : {len(ROLES)}")
-    print(f"  📧 Max / Run   : {MAX_EMAILS_PER_RUN} successful emails")
+    print(
+        f"  📧 Run Goal    : {TARGET_EMAILS_PER_RUN}-"
+        f"{MAX_EMAILS_PER_RUN} quality emails"
+    )
+    print(f"  🧩 Agency Cap  : {MAX_AGENCY_EMAIL_PERCENT}% of successful sends")
     print(f"  🔎 Posts / Role: {POSTS_PER_ROLE} unique linked posts")
     print(
         f"  🔄 Search/Role : until post target or {NO_NEW_POST_PASSES} "
@@ -99,7 +105,7 @@ def wait_between_roles(current_role_name, next_role_name):
     print("\n  ▶ Starting next role now!\n")
 
 
-def process_role(page, role, resume_path, sent_before_role):
+def process_role(page, role, resume_path, sent_before_role, agency_queue):
     """
     Search, filter, AI-check, and email jobs for one role.
 
@@ -107,6 +113,7 @@ def process_role(page, role, resume_path, sent_before_role):
     isolated so the next visible post can still be processed.
     """
     role_sent = 0
+    role_agency_queued = 0
     unique_emails_explored = set()
     ai_results_by_post = {}
     seen_card_keys = set()
@@ -304,8 +311,32 @@ def process_role(page, role, resume_path, sent_before_role):
                     print("       [SKIP] Job skipped")
                     continue
 
+                if ai_result["recruiter_type"] == "staffing_agency":
+                    for email in emails_to_send:
+                        queue_key = (email, post_link)
+                        if queue_key in agency_queue["keys"]:
+                            continue
+                        agency_queue["keys"].add(queue_key)
+                        agency_queue["items"].append({
+                            "to_email": email,
+                            "role": role,
+                            "post_text": post_text,
+                            "post_link": post_link,
+                            "resume_path": resume_path,
+                            "recruiter_name": recruiter_name,
+                            "employer": ai_result["employer"],
+                            "score": score,
+                            "reason": ai_result["reason"],
+                        })
+                        role_agency_queued += 1
+                    print(
+                        f"       [QUEUE] Vetted agency requisition queued; "
+                        f"run-wide {MAX_AGENCY_EMAIL_PERCENT}% cap applies"
+                    )
+                    continue
+
                 print(
-                    "       [AI] Genuine recruiter email(s): "
+                    "       [AI] Direct-employer email(s): "
                     + ", ".join(emails_to_send)
                 )
 
@@ -400,11 +431,71 @@ def process_role(page, role, resume_path, sent_before_role):
             f"\n  [STATS] {role['name']}: processed "
             f"{len(seen_post_links)}/{POSTS_PER_ROLE} unique posts, found "
             f"{len(unique_emails_explored)} unique recruiter emails, sent "
-            f"{role_sent} quality applications ({exploration_status}) after "
+            f"{role_sent} direct applications, queued {role_agency_queued} "
+            f"vetted agency requisitions ({exploration_status}) after "
             f"{pass_num} {pass_label}"
         )
 
     return role_sent
+
+
+def send_queued_agency_applications(agency_queue, direct_sent):
+    """Send vetted agency requisitions without exceeding the run-wide cap."""
+    if not agency_queue["items"] or MAX_AGENCY_EMAIL_PERCENT <= 0:
+        return 0, {}
+
+    direct_share = 100 - MAX_AGENCY_EMAIL_PERCENT
+    allowed_by_ratio = (
+        direct_sent * MAX_AGENCY_EMAIL_PERCENT // direct_share
+        if direct_share > 0
+        else len(agency_queue["items"])
+    )
+    allowed = min(
+        allowed_by_ratio,
+        MAX_EMAILS_PER_RUN - direct_sent,
+        len(agency_queue["items"]),
+    )
+
+    print("\n" + "═" * 62)
+    print("  🧩 VETTED AGENCY REQUISITION QUEUE")
+    print("═" * 62)
+    print(f"  Direct-employer emails sent : {direct_sent}")
+    print(f"  Vetted agency candidates    : {len(agency_queue['items'])}")
+    print(f"  Agency emails allowed       : {allowed}")
+    print(f"  Agency percentage cap       : {MAX_AGENCY_EMAIL_PERCENT}%")
+
+    agency_sent = 0
+    agency_by_role = {}
+    ranked_applications = sorted(
+        agency_queue["items"],
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+    for application in ranked_applications:
+        if agency_sent >= allowed:
+            break
+        print(
+            f"\n  [AGENCY] Sending vetted requisition for "
+            f"{application['employer']} to {application['to_email']}"
+        )
+        success = send_email(
+            to_email=application["to_email"],
+            role=application["role"],
+            post_text=application["post_text"],
+            post_link=application["post_link"],
+            resume_path=application["resume_path"],
+            recruiter_name=application["recruiter_name"],
+        )
+        if success:
+            agency_sent += 1
+            role_name = application["role"]["name"]
+            agency_by_role[role_name] = agency_by_role.get(role_name, 0) + 1
+            print(
+                f"  [STATS] Vetted agency: {agency_sent}/{allowed} | "
+                f"Run total: {direct_sent + agency_sent}/{MAX_EMAILS_PER_RUN}"
+            )
+
+    return agency_sent, agency_by_role
 
 
 def main():
@@ -435,6 +526,7 @@ def main():
 
     grand_total  = 0
     role_summary = []
+    agency_queue = {"items": [], "keys": set()}
 
     with sync_playwright() as pw:
         browser = launch_browser(pw)
@@ -472,6 +564,7 @@ def main():
                 role,
                 RESUME_PATH,
                 sent_before_role=grand_total,
+                agency_queue=agency_queue,
             )
             grand_total += role_sent
 
@@ -501,6 +594,14 @@ def main():
 
         browser.close()
 
+    agency_sent, agency_by_role = send_queued_agency_applications(
+        agency_queue,
+        direct_sent=grand_total,
+    )
+    grand_total += agency_sent
+    for entry in role_summary:
+        entry["sent"] += agency_by_role.get(entry["role"], 0)
+
     # Final summary
     print("\n\n" + "═" * 62)
     if grand_total >= MAX_EMAILS_PER_RUN:
@@ -514,7 +615,14 @@ def main():
         print(f"  {entry['role']:<35} {entry['sent']:>6}")
     print(f"  {'─'*35} {'─'*6}")
     print(f"  {'TOTAL':<35} {grand_total:>6}")
+    print(f"  {'  Direct employer':<35} {grand_total - agency_sent:>6}")
+    print(f"  {'  Vetted agency':<35} {agency_sent:>6}")
     print("═" * 62)
+    if grand_total < TARGET_EMAILS_PER_RUN:
+        print(
+            f"  ⚠ Quality goal not reached: {grand_total}/"
+            f"{TARGET_EMAILS_PER_RUN}. No lower-quality emails were forced."
+        )
     print(f"\n  📁 Log: output/sent_emails.csv\n")
 
 

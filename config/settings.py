@@ -49,11 +49,14 @@ AI_MATCH_MODE            = os.getenv(
 if AI_MATCH_MODE not in {"role_location", "strict"}:
     raise ValueError("AI_MATCH_MODE must be 'role_location' or 'strict'")
 RECRUITER_POLICY         = os.getenv(
-    "RECRUITER_POLICY", "direct_employer_only"
+    "RECRUITER_POLICY", "hybrid_quality"
 ).strip().lower()
-if RECRUITER_POLICY not in {"direct_employer_only", "real_requisition"}:
+if RECRUITER_POLICY not in {
+    "direct_employer_only", "real_requisition", "hybrid_quality"
+}:
     raise ValueError(
-        "RECRUITER_POLICY must be 'direct_employer_only' or 'real_requisition'"
+        "RECRUITER_POLICY must be 'direct_employer_only', "
+        "'real_requisition', or 'hybrid_quality'"
     )
 GROQ_TIMEOUT_SECONDS     = _env_int(
     "GROQ_TIMEOUT_SECONDS", 30, minimum=1
@@ -103,9 +106,15 @@ BCC_EMAILS = _parse_list("BCC_EMAILS")
 
 # ── Bot Settings ───────────────────────────────────────────
 # MAX_EMAILS_PER_ROLE is accepted as a backwards-compatible fallback.
-_legacy_email_limit      = os.getenv("MAX_EMAILS_PER_ROLE", "100")
+_legacy_email_limit      = os.getenv("MAX_EMAILS_PER_ROLE", "30")
 MAX_EMAILS_PER_RUN       = _env_int(
     "MAX_EMAILS_PER_RUN", _legacy_email_limit, minimum=1
+)
+TARGET_EMAILS_PER_RUN    = _env_int(
+    "TARGET_EMAILS_PER_RUN", 20, minimum=1
+)
+MAX_AGENCY_EMAIL_PERCENT = _env_int(
+    "MAX_AGENCY_EMAIL_PERCENT", 20, minimum=0, maximum=50
 )
 POSTS_PER_ROLE           = _env_int(
     "POSTS_PER_ROLE", 30, minimum=1
@@ -128,6 +137,11 @@ WAIT_BETWEEN_ROLES_MIN   = _env_int(
 WAIT_BETWEEN_ROLES_MAX   = _env_int(
     "WAIT_BETWEEN_ROLES_MAX", 120, minimum=0
 )
+
+if TARGET_EMAILS_PER_RUN > MAX_EMAILS_PER_RUN:
+    raise ValueError(
+        "TARGET_EMAILS_PER_RUN must be less than or equal to MAX_EMAILS_PER_RUN"
+    )
 
 if WAIT_BETWEEN_ROLES_MAX < WAIT_BETWEEN_ROLES_MIN:
     raise ValueError(

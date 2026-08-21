@@ -111,9 +111,18 @@ Only recruiter_type=direct_employer may ever return relevant=true.
 
 REAL_REQUISITION_PROMPT = """Recruiter policy: REAL REQUISITION.
 Direct employers are preferred. A third-party recruiter may pass only for a
-specific active requisition with a named client/employer, concrete job details,
-and an application email explicitly tied to that requisition. Generic staffing,
-bench-sales, hotlist, placement, partnership, and résumé-collection posts fail.
+specific active requisition with a named client/end-employer, one concrete job,
+clear US location, experience/authorization terms, and a corporate application
+email explicitly tied to that requisition. Generic staffing, multiple-role
+lists, bench-sales, hotlists, placement, partnerships, and résumé collection
+must fail. Label an approved third-party contact as staffing_agency.
+"""
+
+HYBRID_QUALITY_PROMPT = """Recruiter policy: HYBRID QUALITY.
+Apply the REAL REQUISITION rules. Prefer direct employers. Approve an agency
+only for an unusually clear, specific active requisition with a named
+end-employer and corporate-domain recruiter contact. The application will also
+be subject to a strict run-wide agency percentage cap outside the model.
 """
 
 _LAST_REQUEST_STARTED = 0.0
@@ -265,15 +274,20 @@ def _validate_result(raw_result, allowed_emails):
     if relevant and recruiter_type == "unclear":
         raise ValueError("relevant response has an unclear recruiter type")
 
-    if relevant and RECRUITER_POLICY == "direct_employer_only":
-        if recruiter_type != "direct_employer":
+    if relevant:
+        if (
+            RECRUITER_POLICY == "direct_employer_only"
+            and recruiter_type != "direct_employer"
+        ):
             raise ValueError("staffing/third-party recruiter cannot be approved")
+
         normalized_employer = employer.strip().lower()
         if normalized_employer in {
             "", "unknown", "unclear", "n/a", "na",
             "not specified", "not verified",
         }:
-            raise ValueError("direct-employer response has no verified employer")
+            raise ValueError("approved response has no verified end-employer")
+
         personal_domains = {
             "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
             "aol.com", "icloud.com", "proton.me", "protonmail.com",
@@ -282,7 +296,7 @@ def _validate_result(raw_result, allowed_emails):
             email.rsplit("@", 1)[-1] in personal_domains
             for email in normalized_approved
         ):
-            raise ValueError("direct-employer contact uses a personal domain")
+            raise ValueError("approved contact uses a personal email domain")
 
     normalized_score = float(score)
     if normalized_score.is_integer():
@@ -359,11 +373,12 @@ def evaluate_job_relevance(job_details, role):
         if AI_MATCH_MODE == "role_location"
         else STRICT_PROMPT
     )
-    recruiter_policy_prompt = (
-        DIRECT_EMPLOYER_PROMPT
-        if RECRUITER_POLICY == "direct_employer_only"
-        else REAL_REQUISITION_PROMPT
-    )
+    if RECRUITER_POLICY == "direct_employer_only":
+        recruiter_policy_prompt = DIRECT_EMPLOYER_PROMPT
+    elif RECRUITER_POLICY == "hybrid_quality":
+        recruiter_policy_prompt = HYBRID_QUALITY_PROMPT
+    else:
+        recruiter_policy_prompt = REAL_REQUISITION_PROMPT
     payload = {
         "job": job_details,
         "candidate": _candidate_payload(role),
