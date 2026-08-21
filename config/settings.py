@@ -143,7 +143,7 @@ MAX_JOB_DESCRIPTION_CHARS = _env_int(
 DELAY_BETWEEN_EMAILS     = _env_int("DELAY_BETWEEN_EMAILS", 12, minimum=0)
 SCROLL_ROUNDS            = _env_int("SCROLL_ROUNDS", 8, minimum=0)
 LINKEDIN_DATE_FILTER     = os.getenv(
-    "LINKEDIN_DATE_FILTER", "past-week"
+    "LINKEDIN_DATE_FILTER", "past-24h"
 ).strip().lower()
 _LINKEDIN_DATE_LABELS = {
     "past-24h": "Past 24 hours",
