@@ -40,6 +40,9 @@ GROQ_API_KEY             = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_MODEL               = os.getenv(
     "GROQ_MODEL", "openai/gpt-oss-120b"
 ).strip()
+GROQ_FALLBACK_MODEL      = os.getenv(
+    "GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b"
+).strip()
 AI_RELEVANCE_THRESHOLD   = _env_int(
     "AI_RELEVANCE_THRESHOLD", 70, minimum=0, maximum=100
 )
@@ -61,9 +64,6 @@ if RECRUITER_POLICY not in {
 GROQ_TIMEOUT_SECONDS     = _env_int(
     "GROQ_TIMEOUT_SECONDS", 30, minimum=1
 )
-GROQ_MAX_RETRIES         = _env_int(
-    "GROQ_MAX_RETRIES", 2, minimum=0, maximum=5
-)
 GROQ_MAX_COMPLETION_TOKENS = _env_int(
     "GROQ_MAX_COMPLETION_TOKENS", 1000, minimum=300
 )
@@ -75,6 +75,9 @@ GROQ_RATE_LIMIT_COOLDOWN_SECONDS = _env_int(
 )
 GROQ_MAX_RATE_LIMIT_WAIT_SECONDS = _env_int(
     "GROQ_MAX_RATE_LIMIT_WAIT_SECONDS", 300, minimum=1
+)
+GROQ_MAX_BLOCKING_WAIT_SECONDS = _env_int(
+    "GROQ_MAX_BLOCKING_WAIT_SECONDS", 30, minimum=0, maximum=120
 )
 
 # ── Candidate Info ─────────────────────────────────────────

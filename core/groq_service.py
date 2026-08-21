@@ -11,9 +11,10 @@ from config.settings import (
     CANDIDATE,
     DELAY_BETWEEN_AI_REQUESTS,
     GROQ_API_KEY,
+    GROQ_FALLBACK_MODEL,
+    GROQ_MAX_BLOCKING_WAIT_SECONDS,
     GROQ_MAX_COMPLETION_TOKENS,
     GROQ_MAX_RATE_LIMIT_WAIT_SECONDS,
-    GROQ_MAX_RETRIES,
     GROQ_MODEL,
     GROQ_RATE_LIMIT_COOLDOWN_SECONDS,
     GROQ_TIMEOUT_SECONDS,
@@ -150,17 +151,18 @@ def _parse_wait_seconds(value):
 
 
 def _rate_limit_wait_seconds(exc):
-    """Read a useful cooldown from Groq's HTTP response headers."""
+    """Read a short, bounded cooldown from Groq's response headers."""
     response = getattr(exc, "response", None)
     headers = getattr(response, "headers", {}) or {}
+    max_wait = min(
+        GROQ_MAX_RATE_LIMIT_WAIT_SECONDS,
+        GROQ_MAX_BLOCKING_WAIT_SECONDS,
+    )
 
     retry_ms = headers.get("retry-after-ms")
     if retry_ms is not None:
         try:
-            return min(
-                float(retry_ms) / 1000,
-                GROQ_MAX_RATE_LIMIT_WAIT_SECONDS,
-            )
+            return min(float(retry_ms) / 1000, max_wait)
         except (TypeError, ValueError):
             pass
 
@@ -171,9 +173,9 @@ def _rate_limit_wait_seconds(exc):
     ):
         parsed = _parse_wait_seconds(headers.get(header))
         if parsed is not None:
-            return min(parsed, GROQ_MAX_RATE_LIMIT_WAIT_SECONDS)
+            return min(parsed, max_wait)
 
-    return GROQ_RATE_LIMIT_COOLDOWN_SECONDS
+    return min(GROQ_RATE_LIMIT_COOLDOWN_SECONDS, max_wait)
 
 
 def _pace_request():
@@ -196,16 +198,33 @@ def _create_completion(client, **request_options):
     return client.chat.completions.create(**request_options)
 
 
+def _request_json_response(client, request_options):
+    """Request JSON, falling back to a plain completion on HTTP 400."""
+    try:
+        return _create_completion(
+            client,
+            **request_options,
+            response_format={"type": "json_object"},
+        )
+    except Exception as json_mode_exc:
+        if getattr(json_mode_exc, "status_code", None) != 400:
+            raise
+        print("  [AI] JSON mode failed; retrying plain completion...")
+        return _create_completion(client, **request_options)
+
+
 @lru_cache(maxsize=1)
 def _get_client():
     """Create one reusable official Groq SDK client."""
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is not configured")
 
+    # Disable SDK-level retries because it may honor a multi-minute Retry-After
+    # header before control returns to our bounded fallback/cooldown logic.
     return Groq(
         api_key=GROQ_API_KEY,
         timeout=GROQ_TIMEOUT_SECONDS,
-        max_retries=GROQ_MAX_RETRIES,
+        max_retries=0,
     )
 
 
@@ -418,22 +437,26 @@ def evaluate_job_relevance(job_details, role):
     try:
         client = _get_client()
         try:
-            # JSON Object Mode is more reliable for this model than strict
-            # server-side schema generation. The response is still validated
-            # against our exact local contract before any email can be sent.
-            response = _create_completion(
-                client,
-                **request_options,
-                response_format={"type": "json_object"},
+            response = _request_json_response(client, request_options)
+        except Exception as primary_exc:
+            is_rate_limit = (
+                getattr(primary_exc, "status_code", None) == 429
+                or type(primary_exc).__name__ == "RateLimitError"
             )
-        except Exception as json_mode_exc:
-            # Groq can intermittently return HTTP 400 when JSON generation
-            # fails. Retry once without response_format; _parse_response still
-            # extracts and strictly validates the returned JSON object.
-            if getattr(json_mode_exc, "status_code", None) != 400:
+            if not is_rate_limit or not GROQ_FALLBACK_MODEL:
                 raise
-            print("  [AI] JSON mode failed; retrying plain completion...")
-            response = _create_completion(client, **request_options)
+
+            print(
+                f"  [AI] {GROQ_MODEL} rate-limited; switching to "
+                f"{GROQ_FALLBACK_MODEL}..."
+            )
+            fallback_options = dict(request_options)
+            fallback_options["model"] = GROQ_FALLBACK_MODEL
+            if GROQ_FALLBACK_MODEL.startswith("openai/gpt-oss"):
+                fallback_options["reasoning_effort"] = "low"
+            else:
+                fallback_options.pop("reasoning_effort", None)
+            response = _request_json_response(client, fallback_options)
 
         return _parse_response(response, recruiter_emails)
 

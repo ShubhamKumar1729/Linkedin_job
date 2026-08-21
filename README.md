@@ -43,11 +43,11 @@ Important AI settings:
 ```dotenv
 GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=openai/gpt-oss-120b
+GROQ_FALLBACK_MODEL=openai/gpt-oss-20b
 AI_RELEVANCE_THRESHOLD=70
 AI_MATCH_MODE=role_location
 RECRUITER_POLICY=hybrid_quality
 GROQ_TIMEOUT_SECONDS=30
-GROQ_MAX_RETRIES=2
 GROQ_MAX_COMPLETION_TOKENS=1000
 MAX_EXPERIENCE_YEARS=5
 TARGET_EMAILS_PER_RUN=20
@@ -59,6 +59,7 @@ NO_NEW_POST_PASSES=2
 DELAY_BETWEEN_AI_REQUESTS=15
 GROQ_RATE_LIMIT_COOLDOWN_SECONDS=60
 GROQ_MAX_RATE_LIMIT_WAIT_SECONDS=300
+GROQ_MAX_BLOCKING_WAIT_SECONDS=30
 MAX_EMAILS_PER_POST=5
 MAX_JOB_DESCRIPTION_CHARS=12000
 ```
@@ -89,10 +90,11 @@ been processed. Every valid recruiter email is AI-checked. If fewer than 30
 exist, scrolling continues until two consecutive passes load no new linked
 posts or the safety pass limit is reached.
 
-AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If Groq returns HTTP
-429, response reset headers (or `GROQ_RATE_LIMIT_COOLDOWN_SECONDS`) delay the
-next unique request. Failed checks are cached for the rest of the run so later
-scroll passes do not repeatedly call Groq for the same post.
+AI requests are spaced by `DELAY_BETWEEN_AI_REQUESTS`. If the primary model is
+rate-limited, the bot immediately tries `GROQ_FALLBACK_MODEL`. If both models
+are unavailable, `GROQ_MAX_BLOCKING_WAIT_SECONDS` caps any cooldown so a single
+job cannot freeze the run for several minutes. SDK-level 429 retries are disabled
+to prevent unbounded `Retry-After` sleeps. Failed checks are cached for the run.
 
 `MAX_EMAILS_PER_POST` and `MAX_JOB_DESCRIPTION_CHARS` are technical DOM guards:
 they reject accidental LinkedIn parent containers that combine many unrelated

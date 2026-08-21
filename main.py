@@ -10,6 +10,8 @@ from config.settings import (
     ROLES,
     GROQ_API_KEY,
     GROQ_MODEL,
+    GROQ_FALLBACK_MODEL,
+    GROQ_MAX_BLOCKING_WAIT_SECONDS,
     AI_MATCH_MODE,
     RECRUITER_POLICY,
     AI_RELEVANCE_THRESHOLD,
@@ -62,6 +64,8 @@ def print_banner():
         f"no-new passes (safety max {MAX_PASSES_PER_ROLE})"
     )
     print(f"  🤖 Groq Model  : {GROQ_MODEL}")
+    print(f"  ↪ AI Fallback : {GROQ_FALLBACK_MODEL or 'Disabled'}")
+    print(f"  ⏱ Max AI Wait : {GROQ_MAX_BLOCKING_WAIT_SECONDS} seconds")
     print(f"  🧭 Match Mode  : {AI_MATCH_MODE}")
     print(f"  🏢 Recruiters  : {RECRUITER_POLICY}")
     print(f"  🧑 Experience  : jobs requiring up to {MAX_EXPERIENCE_YEARS} years")
