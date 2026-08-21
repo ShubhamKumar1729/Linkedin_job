@@ -48,12 +48,12 @@ from core.tracker      import already_sent, load_sent_cache
 from utils.helpers     import clean, extract_emails
 
 
-def print_banner():
+def print_banner(roles):
     print("\n" + "═" * 62)
     print("     LinkedIn Multi-Role Job Application Bot")
     print("═" * 62)
     print(f"  📄 Resume      : {RESUME_PATH.name}")
-    print(f"  🎯 Total Roles : {len(ROLES)}")
+    print(f"  🎯 Roles / Run : {len(roles)}")
     print(
         f"  📧 Run Goal    : {TARGET_EMAILS_PER_RUN}-"
         f"{MAX_EMAILS_PER_RUN} quality emails"
@@ -80,10 +80,55 @@ def print_banner():
     print(f"  ⏳ Wait/Role   : "
           f"{WAIT_BETWEEN_ROLES_MIN}-{WAIT_BETWEEN_ROLES_MAX} seconds")
     print("═" * 62)
-    print("\n  Roles queued:")
-    for role in ROLES:
+    print("\n  Roles queued for this run:")
+    for role in roles:
         print(f"    {role['index']:>2}. {role['name']}")
     print()
+
+
+def select_start_role(roles):
+    """Ask which configured role should be the first role for this run."""
+    print("\n" + "═" * 62)
+    print("  SELECT STARTING ROLE")
+    print("═" * 62)
+    for role in roles:
+        print(f"  {role['index']:>2}. {role['name']}")
+
+    valid_indices = {role["index"] for role in roles}
+    while True:
+        try:
+            raw_value = input(
+                f"\n  ▶ Start from role number "
+                f"({min(valid_indices)}-{max(valid_indices)}, "
+                f"default {min(valid_indices)}): "
+            ).strip()
+        except EOFError:
+            raw_value = ""
+
+        if not raw_value:
+            selected_index = min(valid_indices)
+        else:
+            try:
+                selected_index = int(raw_value)
+            except ValueError:
+                print("  ⚠ Please enter a valid role number.")
+                continue
+
+        if selected_index not in valid_indices:
+            print("  ⚠ Role number is not configured. Try again.")
+            continue
+
+        start_position = next(
+            position
+            for position, role in enumerate(roles)
+            if role["index"] == selected_index
+        )
+        selected_roles = roles[start_position:]
+        print(
+            f"  ✅ Starting from role {selected_index}: "
+            f"{selected_roles[0]['name']}"
+        )
+        return selected_roles
 
 
 def print_role_banner(role):
@@ -534,7 +579,8 @@ def main():
         print(f"\n❌ Resume not found: {RESUME_PATH}")
         return
 
-    print_banner()
+    roles_for_run = select_start_role(ROLES)
+    print_banner(roles_for_run)
     load_sent_cache()
 
     grand_total  = 0
@@ -567,8 +613,8 @@ def main():
 
         browser.on("page", close_unexpected_tab)
 
-        # Loop roles
-        for i, role in enumerate(ROLES):
+        # Loop from the role selected for this run.
+        for i, role in enumerate(roles_for_run):
 
             print_role_banner(role)
 
@@ -600,9 +646,9 @@ def main():
                 )
                 break
 
-            is_last = (i == len(ROLES) - 1)
+            is_last = (i == len(roles_for_run) - 1)
             if not is_last:
-                next_role = ROLES[i + 1]
+                next_role = roles_for_run[i + 1]
                 wait_between_roles(role["name"], next_role["name"])
 
         browser.close()

@@ -124,8 +124,10 @@ source .venv/bin/activate        # if not already active
 python main.py
 ```
 
-The first run may open LinkedIn's login page. Log in manually and press Enter
-in the terminal when prompted. The persistent browser profile is stored in
+Before Chromium opens, the terminal lists all configured roles and asks which
+role number should start the run. Press Enter for role 1, or enter (for example)
+`3` to process roles 3 through the final configured role. The first browser run
+may require manual LinkedIn login. The persistent profile is stored in
 `linkedin_profile_data/` and is ignored by Git.
 
 ## Data and operational notes
