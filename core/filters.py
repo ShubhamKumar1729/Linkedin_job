@@ -27,13 +27,10 @@ BLOCK_POST_KEYWORDS = [
     "free webinar",
 
     # Not real hiring (Groq also checks these)
-    "comment interested",
-    "comment \"interested\"",
     "send resume via dm",
     "send your cv via dm",
     "dm your resume",
     "dm me your resume",
-    "tag someone",
 
     # Freelance / gig
     "freelance network",

@@ -20,8 +20,8 @@ GMAIL_ID           = os.getenv("GMAIL_ID", "").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 
 # ── Groq relevance ─────────────────────────────────────────
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip().strip('"').strip("'")
+GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip('"').strip("'")
 
 # ── Candidate Info ─────────────────────────────────────────
 CANDIDATE = {
@@ -59,9 +59,7 @@ WAIT_BETWEEN_ROLES_MAX = int(os.getenv("WAIT_BETWEEN_ROLES_MAX", "120"))
 # ── Email Filtering ────────────────────────────────────────
 BAD_EMAIL_PREFIXES = {
     "noreply", "no-reply", "donotreply", "do-not-reply",
-    "admin", "support", "help", "info", "contact",
-    "sales", "marketing", "privacy", "security",
-    "abuse", "postmaster", "mailer-daemon",
+    "privacy", "security", "abuse", "postmaster", "mailer-daemon",
 }
 
 BAD_EMAIL_DOMAINS = {

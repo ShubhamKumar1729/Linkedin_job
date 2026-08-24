@@ -58,6 +58,26 @@ def extract_poster_name(card):
     return ""
 
 
+def _link_from_html(card):
+    try:
+        html = card.evaluate("el => el.outerHTML || ''") or ""
+    except Exception:
+        html = ""
+
+    m = re.search(r"(urn:li:(?:activity|ugcPost):\d+)", html)
+    if m:
+        return f"https://www.linkedin.com/feed/update/{m.group(1)}/"
+
+    m = re.search(r"activity[-:_](\d{12,})", html)
+    if m:
+        return f"https://www.linkedin.com/feed/update/urn:li:activity:{m.group(1)}/"
+
+    m = re.search(r"/posts/[^\"'\s]+", html)
+    if m:
+        return normalize_post_link("https://www.linkedin.com" + m.group(0))
+    return ""
+
+
 def _link_from_urn(card):
     try:
         urn = card.evaluate(
@@ -87,12 +107,12 @@ def _link_from_urn(card):
 
     urn = clean(urn)
     if not urn:
-        return ""
+        return _link_from_html(card)
 
     m = re.search(r"(urn:li:(?:activity|ugcPost):\d+)", urn)
     if m:
         return f"https://www.linkedin.com/feed/update/{m.group(1)}/"
-    return ""
+    return _link_from_html(card)
 
 
 def get_post_link_from_card(page, card):
@@ -144,19 +164,27 @@ def get_post_link_from_card(page, card):
     except Exception:
         pass
 
-    return ""
+    return _link_from_html(card)
 
 
 def _expand_see_more(page):
-    labels = ["…more", "...more", "see more", "Show more", "more"]
-    for label in labels:
+    # Only expand truncated post bodies. Do NOT click generic "more"
+    # (that hits nav / overflow menus and can hang Playwright).
+    selectors = [
+        "button.feed-shared-inline-show-more-text__see-more-less-toggle",
+        "button[aria-label*='see more' i]",
+        "button:has-text('…more')",
+        "button:has-text('...more')",
+        "span.see-more",
+    ]
+    for selector in selectors:
         try:
-            buttons = page.get_by_text(label, exact=False)
-            limit = min(buttons.count(), 30)
+            loc = page.locator(selector)
+            limit = min(loc.count(), 20)
             for i in range(limit):
                 try:
-                    buttons.nth(i).click(timeout=600)
-                    page.wait_for_timeout(150)
+                    loc.nth(i).click(timeout=400, force=True)
+                    page.wait_for_timeout(120)
                 except Exception:
                     pass
         except Exception:

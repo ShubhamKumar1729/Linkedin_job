@@ -121,8 +121,8 @@ def process_role(page, role, resume_path):
 
                 post_link = get_post_link_from_card(page, card)
                 if not post_link:
-                    print("       ⛔ No post link")
-                    continue
+                    print("       ⚠  No LinkedIn URL — sending with text fallback id")
+                    post_link = f"fallback:{emails[0]}"
 
                 if post_link in seen_posts:
                     print("       ⛔ Duplicate post")

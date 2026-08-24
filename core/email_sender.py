@@ -124,13 +124,13 @@ def send_email(
 ):
     """Send email to one recruiter. Returns True if sent."""
 
-    to_email  = normalize_email(to_email)
-    post_link = normalize_post_link(post_link)
-
-    # ── Validation ─────────────────────────────────────────
-    if not post_link:
-        print(f"    ⚠  Skipped (no post link)  : {to_email}")
-        return False
+    to_email = normalize_email(to_email)
+    fixed = normalize_post_link(post_link)
+    if not fixed:
+        # Still send — search cards often hide the activity URL
+        digest = re.sub(r"[^a-zA-Z0-9]+", "-", (post_text or "")[:80]).strip("-")
+        fixed = f"https://www.linkedin.com/search/results/content/?keywords={digest[:60] or to_email}"
+    post_link = fixed
 
     if to_email in blocked_emails():
         print(f"    ⚠  Skipped (blocked email) : {to_email}")

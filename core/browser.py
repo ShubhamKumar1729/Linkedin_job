@@ -83,8 +83,11 @@ def search_and_filter(page, role):
         # Fallback - try search bar
         _try_searchbar(page, search_query)
 
-    # ── Step 2: Apply Past 24 Hours Filter ────────────────
-    _apply_24h_filter(page)
+    # URL already includes datePosted=past-24h
+    if "datePosted" not in (page.url or ""):
+        _apply_24h_filter(page)
+    else:
+        print("  ✅ Past 24 hours already in URL — skip filter UI")
 
 
 def _try_searchbar(page, search_query):
