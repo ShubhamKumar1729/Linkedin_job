@@ -31,18 +31,6 @@ BLOCK_POST_KEYWORDS = [
     "demo class",
     "free webinar",
 
-    # Not US jobs
-    "bangalore",
-    "hyderabad",
-    "chennai",
-    "mumbai",
-    "india only",
-    "pakistan",
-    "latam",
-    "mexico city",
-    "saudi arabia",
-    "ksa",
-
     # Not real hiring
     "comment interested",
     "comment \"interested\"",
@@ -194,8 +182,4 @@ def should_send_to_post(post_text):
     if not looks_like_real_job(post_text):
         return False, "No job signal found"
 
-    # Must have US signal
-    if not has_us_job_signal(post_text):
-        return False, "No US job signal found"
-
-    return True, "Valid US job post"
+    return True, "Valid job post"
