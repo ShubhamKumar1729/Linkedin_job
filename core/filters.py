@@ -16,31 +16,23 @@ BLOCK_POST_KEYWORDS = [
     "training program",
     "certification program",
     "we help students",
-    "upskill",
     "learn from",
     "enroll now",
-    "batch starting",
     "online course",
-    "job support",
-    "interview preparation",
     "resume service",
     "career coaching",
     "job guarantee",
     "placement guarantee",
-    "mentorship program",
     "demo class",
     "free webinar",
 
-    # Not real hiring
+    # Not real hiring (Groq also checks these)
     "comment interested",
     "comment \"interested\"",
     "send resume via dm",
     "send your cv via dm",
     "dm your resume",
     "dm me your resume",
-    "whatsapp",
-    "wa.me",
-    "wa.link",
     "tag someone",
 
     # Freelance / gig
@@ -112,7 +104,7 @@ def is_valid_recruiter_email(email):
     if domain in personal_domains:
         # Allow only if local part looks professional
         # Block obvious non-recruiters like random numbers
-        if re.match(r"^[a-z]+\d{4,}@", email):
+        if re.match(r"^[a-z]+\d{6,}@", email):
             return False
 
     return True

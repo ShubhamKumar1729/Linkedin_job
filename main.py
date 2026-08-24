@@ -8,9 +8,12 @@ from config.settings import (
     RESUME_PATH,
     ROLES,
     MAX_EMAILS_PER_ROLE,
+    MIN_EMAILS_PER_ROLE,
     SCROLL_ROUNDS,
+    SCRAPE_PASSES,
     WAIT_BETWEEN_ROLES_MIN,
     WAIT_BETWEEN_ROLES_MAX,
+    GROQ_API_KEY,
 )
 from core.browser      import (
     launch_browser,
@@ -20,6 +23,7 @@ from core.browser      import (
 )
 from core.scraper      import get_cards, get_post_link_from_card, extract_poster_name
 from core.filters      import should_send_to_post, filter_recruiter_emails
+from core.groq_filter  import groq_is_relevant
 from core.email_sender import send_email
 from core.tracker      import load_sent_cache
 from utils.helpers     import clean, extract_emails
@@ -32,6 +36,8 @@ def print_banner():
     print(f"  📄 Resume      : {RESUME_PATH.name}")
     print(f"  🎯 Total Roles : {len(ROLES)}")
     print(f"  📧 Max / Role  : {MAX_EMAILS_PER_ROLE} emails")
+    print(f"  🎯 Min / Role  : {MIN_EMAILS_PER_ROLE} emails")
+    print(f"  🤖 Groq        : {'ON' if GROQ_API_KEY else 'OFF (set GROQ_API_KEY)'}")
     print(f"  ⏳ Wait/Role   : "
           f"{WAIT_BETWEEN_ROLES_MIN}-{WAIT_BETWEEN_ROLES_MAX} seconds")
     print("═" * 62)

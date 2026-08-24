@@ -12,19 +12,22 @@ JUNK_PHRASES = [
 
 CARD_SELECTORS = [
     "div.feed-shared-update-v2",
+    "div.feed-shared-update-v2__control-menu-container",
     "li.reusable-search__result-container",
-    "div[data-urn]",
+    "div[data-urn*='activity']",
+    "div[data-urn*='ugcPost']",
     "article",
-    "main div",
 ]
 
 
+def _safe_text(card, timeout=1000):
+    try:
+        return clean(card.inner_text(timeout=timeout))
+    except Exception:
+        return ""
+
+
 def extract_poster_name(card):
-    """
-    Try to extract the name of the person who made the post.
-    Returns first name only or empty string if not found.
-    """
-    # Try common LinkedIn name selectors
     name_selectors = [
         "span.update-components-actor__name",
         "span.app-aware-link span[aria-hidden='true']",
@@ -39,10 +42,8 @@ def extract_poster_name(card):
             el = card.locator(selector).first
             if el.count() > 0:
                 name = clean(el.inner_text(timeout=1000))
-                if name and len(name) > 1 and len(name) < 60:
-                    # Return only first name
+                if name and 1 < len(name) < 60:
                     first_name = name.strip().split()[0]
-                    # Clean any junk
                     first_name = re.sub(r"[^a-zA-Z\-]", "", first_name)
                     if first_name:
                         return first_name
@@ -52,29 +53,56 @@ def extract_poster_name(card):
     return ""
 
 
+def _link_from_urn(card):
+    try:
+        urn = card.evaluate(
+            """el => {
+                const node = el.closest('[data-urn]')
+                    || (el.hasAttribute && el.hasAttribute('data-urn') ? el : null)
+                    || el.querySelector('[data-urn]');
+                return node ? (node.getAttribute('data-urn') || '') : '';
+            }"""
+        )
+    except Exception:
+        urn = ""
+
+    urn = clean(urn)
+    if not urn:
+        return ""
+
+    if urn.startswith("urn:li:activity:") or urn.startswith("urn:li:ugcPost:"):
+        return f"https://www.linkedin.com/feed/update/{urn}/"
+
+    m = re.search(r"(urn:li:(?:activity|ugcPost):\d+)", urn)
+    if m:
+        return f"https://www.linkedin.com/feed/update/{m.group(1)}/"
+    return ""
+
+
 def get_post_link_from_card(page, card):
-    """
-    Try two methods to extract LinkedIn post URL from a card.
-    Method 1: scan anchor hrefs inside the card
-    Method 2: click more options button and copy link
-    """
+    # Method 0 - data-urn on the card (most reliable)
+    urn_link = _link_from_urn(card)
+    if urn_link:
+        return urn_link
 
     # Method 1 - href scan
     try:
-        hrefs = card.evaluate("""
+        hrefs = card.evaluate(
+            """
             el => Array.from(el.querySelectorAll('a[href]'))
                 .map(a => a.href || a.getAttribute('href'))
                 .filter(Boolean)
-        """)
+            """
+        )
         for href in hrefs:
-            href  = urljoin("https://www.linkedin.com", href)
+            href = urljoin("https://www.linkedin.com", href)
             fixed = normalize_post_link(href)
             if fixed:
                 return fixed
     except Exception:
         pass
 
-    # Method 2 - clipboard copy via more options button
+    # Method 2 - copy link from more menu
     try:
         buttons = card.locator("button").all()
         for btn in buttons:
@@ -89,15 +117,11 @@ def get_post_link_from_card(page, card):
                     "Copy link",
                 ]:
                     try:
-                        opt = page.get_by_text(
-                            option_text, exact=False
-                        ).first
+                        opt = page.get_by_text(option_text, exact=False).first
                         if opt.count() > 0:
                             opt.click(timeout=2000)
                             page.wait_for_timeout(800)
-                            copied = page.evaluate(
-                                "navigator.clipboard.readText()"
-                            )
+                            copied = page.evaluate("navigator.clipboard.readText()")
                             page.keyboard.press("Escape")
                             fixed = normalize_post_link(copied)
                             if fixed:
@@ -113,18 +137,23 @@ def get_post_link_from_card(page, card):
 
 
 def get_cards(page):
-    """
-    Scrape all visible LinkedIn post cards that contain emails.
-    Returns deduplicated list of card elements.
-    """
-
-    # Expand truncated post text
     try:
-        more_buttons = page.get_by_text("more", exact=False)
-        for i in range(min(more_buttons.count(), 20)):
+        more_buttons = page.get_by_text("…more", exact=False)
+        for i in range(min(more_buttons.count(), 25)):
             try:
                 more_buttons.nth(i).click(timeout=800)
-                page.wait_for_timeout(250)
+                page.wait_for_timeout(200)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        more_buttons = page.get_by_text("see more", exact=False)
+        for i in range(min(more_buttons.count(), 15)):
+            try:
+                more_buttons.nth(i).click(timeout=800)
+                page.wait_for_timeout(200)
             except Exception:
                 pass
     except Exception:
@@ -137,38 +166,26 @@ def get_cards(page):
             found = page.locator(selector).all()
             for card in found:
                 try:
-                    text = clean(card.inner_text(timeout=1000))
-
-                    # Skip short or empty cards
+                    text = _safe_text(card, timeout=1200)
                     if len(text) < 40:
                         continue
-
-                    # Must have at least one email
                     if not extract_emails(text):
                         continue
-
-                    # Skip navigation / UI junk
                     low = text.lower()
                     if any(j in low for j in JUNK_PHRASES):
                         continue
-
                     cards.append(card)
-
                 except Exception:
                     pass
         except Exception:
             pass
 
-    # Deduplicate by first 700 chars of text
     unique = []
-    seen   = set()
+    seen = set()
     for card in cards:
-        try:
-            key = clean(card.inner_text(timeout=800))[:700]
-            if key not in seen:
-                seen.add(key)
-                unique.append(card)
-        except Exception:
-            pass
+        key = _safe_text(card, timeout=800)[:700]
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(card)
 
     return unique

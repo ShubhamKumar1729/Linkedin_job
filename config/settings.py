@@ -19,6 +19,10 @@ RESUME_PATH     = OUTPUT_DIR / RESUME_FILENAME
 GMAIL_ID           = os.getenv("GMAIL_ID", "").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 
+# ── Groq relevance ─────────────────────────────────────────
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
+
 # ── Candidate Info ─────────────────────────────────────────
 CANDIDATE = {
     "name":         os.getenv("CANDIDATE_NAME",         "").strip(),
@@ -45,8 +49,10 @@ BCC_EMAILS = _parse_list("BCC_EMAILS")
 
 # ── Bot Settings ───────────────────────────────────────────
 MAX_EMAILS_PER_ROLE    = int(os.getenv("MAX_EMAILS_PER_ROLE",    "15"))
+MIN_EMAILS_PER_ROLE    = int(os.getenv("MIN_EMAILS_PER_ROLE",    "2"))
 DELAY_BETWEEN_EMAILS   = int(os.getenv("DELAY_BETWEEN_EMAILS",   "12"))
-SCROLL_ROUNDS          = int(os.getenv("SCROLL_ROUNDS",          "8"))
+SCROLL_ROUNDS          = int(os.getenv("SCROLL_ROUNDS",          "12"))
+SCRAPE_PASSES          = int(os.getenv("SCRAPE_PASSES",          "4"))
 WAIT_BETWEEN_ROLES_MIN = int(os.getenv("WAIT_BETWEEN_ROLES_MIN", "60"))
 WAIT_BETWEEN_ROLES_MAX = int(os.getenv("WAIT_BETWEEN_ROLES_MAX", "120"))
 
