@@ -12,15 +12,20 @@ JUNK_PHRASES = [
 
 CARD_SELECTORS = [
     "div.feed-shared-update-v2",
-    "div.feed-shared-update-v2__control-menu-container",
+    "div.update-components-actor",
     "li.reusable-search__result-container",
+    "div.reusable-search__result-container",
+    "div[data-chameleon-result-urn]",
     "div[data-urn*='activity']",
     "div[data-urn*='ugcPost']",
-    "article",
+    "div[data-view-name='search-entity-result-universal-template']",
+    "div.scaffold-finite-scroll__content > div",
+    "main ul > li",
+    "main div",
 ]
 
 
-def _safe_text(card, timeout=1000):
+def _safe_text(card, timeout=1500):
     try:
         return clean(card.inner_text(timeout=timeout))
     except Exception:
@@ -57,10 +62,24 @@ def _link_from_urn(card):
     try:
         urn = card.evaluate(
             """el => {
-                const node = el.closest('[data-urn]')
-                    || (el.hasAttribute && el.hasAttribute('data-urn') ? el : null)
-                    || el.querySelector('[data-urn]');
-                return node ? (node.getAttribute('data-urn') || '') : '';
+                const attrs = ['data-urn', 'data-chameleon-result-urn', 'data-id'];
+                let node = el;
+                for (let i = 0; i < 8 && node; i++) {
+                    for (const a of attrs) {
+                        const v = node.getAttribute && node.getAttribute(a);
+                        if (v && (v.includes('activity') || v.includes('ugcPost') || v.includes('urn:li'))) {
+                            return v;
+                        }
+                    }
+                    node = node.parentElement;
+                }
+                const inner = el.querySelector('[data-urn], [data-chameleon-result-urn]');
+                if (inner) {
+                    return inner.getAttribute('data-urn')
+                        || inner.getAttribute('data-chameleon-result-urn')
+                        || '';
+                }
+                return '';
             }"""
         )
     except Exception:
@@ -70,9 +89,6 @@ def _link_from_urn(card):
     if not urn:
         return ""
 
-    if urn.startswith("urn:li:activity:") or urn.startswith("urn:li:ugcPost:"):
-        return f"https://www.linkedin.com/feed/update/{urn}/"
-
     m = re.search(r"(urn:li:(?:activity|ugcPost):\d+)", urn)
     if m:
         return f"https://www.linkedin.com/feed/update/{m.group(1)}/"
@@ -80,12 +96,10 @@ def _link_from_urn(card):
 
 
 def get_post_link_from_card(page, card):
-    # Method 0 - data-urn on the card (most reliable)
     urn_link = _link_from_urn(card)
     if urn_link:
         return urn_link
 
-    # Method 1 - href scan
     try:
         hrefs = card.evaluate(
             """
@@ -102,7 +116,6 @@ def get_post_link_from_card(page, card):
     except Exception:
         pass
 
-    # Method 2 - copy link from more menu
     try:
         buttons = card.locator("button").all()
         for btn in buttons:
@@ -110,7 +123,6 @@ def get_post_link_from_card(page, card):
             if any(w in label for w in ["more", "control", "actions"]):
                 btn.click(timeout=2000)
                 page.wait_for_timeout(800)
-
                 for option_text in [
                     "Copy link to post",
                     "Copy link to this post",
@@ -128,7 +140,6 @@ def get_post_link_from_card(page, card):
                                 return fixed
                     except Exception:
                         pass
-
         page.keyboard.press("Escape")
     except Exception:
         pass
@@ -136,34 +147,32 @@ def get_post_link_from_card(page, card):
     return ""
 
 
-def get_cards(page):
-    try:
-        more_buttons = page.get_by_text("…more", exact=False)
-        for i in range(min(more_buttons.count(), 25)):
-            try:
-                more_buttons.nth(i).click(timeout=800)
-                page.wait_for_timeout(200)
-            except Exception:
-                pass
-    except Exception:
-        pass
+def _expand_see_more(page):
+    labels = ["…more", "...more", "see more", "Show more", "more"]
+    for label in labels:
+        try:
+            buttons = page.get_by_text(label, exact=False)
+            limit = min(buttons.count(), 30)
+            for i in range(limit):
+                try:
+                    buttons.nth(i).click(timeout=600)
+                    page.wait_for_timeout(150)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
-    try:
-        more_buttons = page.get_by_text("see more", exact=False)
-        for i in range(min(more_buttons.count(), 15)):
-            try:
-                more_buttons.nth(i).click(timeout=800)
-                page.wait_for_timeout(200)
-            except Exception:
-                pass
-    except Exception:
-        pass
+
+def get_cards(page):
+    _expand_see_more(page)
 
     cards = []
+    scanned = 0
 
     for selector in CARD_SELECTORS:
         try:
             found = page.locator(selector).all()
+            scanned += len(found)
             for card in found:
                 try:
                     text = _safe_text(card, timeout=1200)
@@ -188,4 +197,5 @@ def get_cards(page):
             seen.add(key)
             unique.append(card)
 
+    print(f"     (scanned {scanned} nodes, {len(unique)} with emails)")
     return unique

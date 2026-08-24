@@ -4,6 +4,13 @@ EMAIL_REGEX = re.compile(
     r"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b"
 )
 
+OBFUSCATED_EMAIL = re.compile(
+    r"\b([a-zA-Z0-9._%+\-]+)\s*(?:\[at\]|\(at\)|\sat\s|@)\s*"
+    r"([a-zA-Z0-9.\-]+)\s*(?:\[dot\]|\(dot\)|\sdot\s|\.)\s*"
+    r"([a-zA-Z]{2,})\b",
+    re.IGNORECASE,
+)
+
 
 def clean(text):
     """Clean and normalize raw text."""
@@ -39,6 +46,10 @@ def normalize_post_link(raw_link):
     if m:
         return f"https://www.linkedin.com/feed/update/{m.group(0)}/"
 
+    m = re.search(r"urn:li:ugcPost:\d+", link)
+    if m:
+        return f"https://www.linkedin.com/feed/update/{m.group(0)}/"
+
     m = re.search(r"activity[-:](\d{10,})", link)
     if m:
         return (
@@ -65,12 +76,16 @@ def normalize_post_link(raw_link):
 def extract_emails(text):
     """Extract all unique valid-format emails from text."""
     text = clean(text)
-    found = EMAIL_REGEX.findall(text)
+    found = list(EMAIL_REGEX.findall(text))
+
+    for local, domain, tld in OBFUSCATED_EMAIL.findall(text):
+        found.append(f"{local}@{domain}.{tld}")
+
     unique = []
-    seen   = set()
+    seen = set()
     for email in found:
         email = normalize_email(email)
-        if email and email not in seen:
+        if email and email not in seen and "@" in email:
             seen.add(email)
             unique.append(email)
     return unique

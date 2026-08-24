@@ -38,6 +38,7 @@ def print_banner():
     print(f"  📧 Max / Role  : {MAX_EMAILS_PER_ROLE} emails")
     print(f"  🎯 Min / Role  : {MIN_EMAILS_PER_ROLE} emails")
     print(f"  🤖 Groq        : {'ON' if GROQ_API_KEY else 'OFF (set GROQ_API_KEY)'}")
+    print(f"  🔁 Passes      : {SCRAPE_PASSES}")
     print(f"  ⏳ Wait/Role   : "
           f"{WAIT_BETWEEN_ROLES_MIN}-{WAIT_BETWEEN_ROLES_MAX} seconds")
     print("═" * 62)
@@ -56,7 +57,6 @@ def print_role_banner(role):
 
 
 def wait_between_roles(current_role_name, next_role_name):
-    """Countdown wait between roles."""
     wait_seconds = random.randint(
         WAIT_BETWEEN_ROLES_MIN,
         WAIT_BETWEEN_ROLES_MAX,
@@ -67,38 +67,35 @@ def wait_between_roles(current_role_name, next_role_name):
     print(f"  ⏳ Waiting  : {wait_seconds} seconds")
     print(f"  {'─' * 58}")
 
-    for remaining in range(wait_seconds, 0, -5):
+    remaining = wait_seconds
+    while remaining > 0:
         print(f"  ⏱  {remaining:>4} seconds remaining...", end="\r")
-        time.sleep(5)
+        step = 5 if remaining >= 5 else remaining
+        time.sleep(step)
+        remaining -= step
 
-    print(f"\n  ▶ Starting next role now!\n")
+    print("\n  ▶ Starting next role now!\n")
 
 
 def process_role(page, role, resume_path):
-    """
-    Auto search + apply filters + scrape + send emails.
-    Returns number of emails sent for this role.
-    """
     role_sent = 0
+    seen_posts = set()
+    total_passes = max(2, SCRAPE_PASSES)
 
-    # ── Auto Search + Filter ───────────────────────────────
     search_and_filter(page, role)
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(4000)
 
-    # ── Two passes ────────────────────────────────────────
-    for pass_num in range(1, 3):
-
+    for pass_num in range(1, total_passes + 1):
         if role_sent >= MAX_EMAILS_PER_ROLE:
             break
 
         cards = get_cards(page)
-        print(f"\n  📋 Pass {pass_num} - Posts found: {len(cards)}")
+        print(f"\n  📋 Pass {pass_num}/{total_passes} - Posts found: {len(cards)}")
 
         if not cards:
             print("  ⚠  No posts with emails visible.\n")
 
         for idx, card in enumerate(cards, start=1):
-
             if role_sent >= MAX_EMAILS_PER_ROLE:
                 print(f"\n  🎯 Max {MAX_EMAILS_PER_ROLE} reached!")
                 break
@@ -106,35 +103,39 @@ def process_role(page, role, resume_path):
             try:
                 post_text = clean(card.inner_text(timeout=2000))
 
-                # Gate 1: filter post
                 allowed, reason = should_send_to_post(post_text)
                 if not allowed:
                     print(f"  {idx:>3}. ⛔ Skipped → {reason}")
                     continue
 
-                # Gate 2: extract emails
-                emails = filter_recruiter_emails(
-                    extract_emails(post_text)
-                )
-                if not emails:
-                    print(f"  {idx:>3}. ⛔ No valid email")
+                groq_ok, groq_reason = groq_is_relevant(role, post_text)
+                print(f"  {idx:>3}. 🤖 {groq_reason}")
+                if not groq_ok:
+                    print("       ⛔ Groq said not relevant")
                     continue
 
-                # Gate 3: get post link
+                emails = filter_recruiter_emails(extract_emails(post_text))
+                if not emails:
+                    print("       ⛔ No valid email")
+                    continue
+
                 post_link = get_post_link_from_card(page, card)
                 if not post_link:
-                    print(f"  {idx:>3}. ⛔ No post link")
+                    print("       ⛔ No post link")
                     continue
 
-                # Get recruiter name
+                if post_link in seen_posts:
+                    print("       ⛔ Duplicate post")
+                    continue
+                seen_posts.add(post_link)
+
                 recruiter_name = extract_poster_name(card)
 
-                print(f"\n  {idx:>3}. ✅ Valid post")
+                print("       ✅ Valid post")
                 print(f"       🔗 {post_link}")
                 print(f"       👤 {recruiter_name or 'Name not found'}")
                 print(f"       📧 {emails}")
 
-                # Send email
                 for email in emails:
                     if role_sent >= MAX_EMAILS_PER_ROLE:
                         break
@@ -158,17 +159,23 @@ def process_role(page, role, resume_path):
             except Exception as e:
                 print(f"  {idx:>3}. ❌ Error: {e}")
 
-        # Scroll after first pass
-        if pass_num == 1:
-            print(f"\n  📜 Scrolling for more posts...")
+        if role_sent >= MAX_EMAILS_PER_ROLE:
+            break
+
+        if pass_num < total_passes:
+            print("\n  📜 Scrolling for more posts...")
             scroll_page(page, rounds=SCROLL_ROUNDS)
+
+    if role_sent < MIN_EMAILS_PER_ROLE:
+        print(
+            f"\n  ⚠  Only {role_sent}/{MIN_EMAILS_PER_ROLE} "
+            f"minimum emails found for this role."
+        )
 
     return role_sent
 
 
 def main():
-
-    # ── Checks ─────────────────────────────────────────────
     if not GMAIL_ID or not GMAIL_APP_PASSWORD:
         print("\n❌ Gmail credentials missing in .env!")
         return
@@ -184,22 +191,19 @@ def main():
     print_banner()
     load_sent_cache()
 
-    grand_total  = 0
+    grand_total = 0
     role_summary = []
 
     with sync_playwright() as pw:
         browser = launch_browser(pw)
-        page    = browser.new_page()
+        page = browser.new_page()
 
-        # Check login once
         open_linkedin_and_check_login(page)
 
-        # Loop roles
         for i, role in enumerate(ROLES):
-
             print_role_banner(role)
 
-            role_sent    = process_role(page, role, RESUME_PATH)
+            role_sent = process_role(page, role, RESUME_PATH)
             grand_total += role_sent
 
             role_summary.append({
@@ -213,14 +217,11 @@ def main():
             print(f"  │  📊 Total  : {grand_total:<38}│")
             print(f"  └{'─' * 50}┘")
 
-            is_last = (i == len(ROLES) - 1)
-            if not is_last:
-                next_role = ROLES[i + 1]
-                wait_between_roles(role["name"], next_role["name"])
+            if i != len(ROLES) - 1:
+                wait_between_roles(role["name"], ROLES[i + 1]["name"])
 
         browser.close()
 
-    # Final summary
     print("\n\n" + "═" * 62)
     print("  ✅ ALL ROLES COMPLETED!")
     print("═" * 62)
@@ -231,7 +232,7 @@ def main():
     print(f"  {'─'*35} {'─'*6}")
     print(f"  {'TOTAL':<35} {grand_total:>6}")
     print("═" * 62)
-    print(f"\n  📁 Log: output/sent_emails.csv\n")
+    print("\n  📁 Log: output/sent_emails.csv\n")
 
 
 if __name__ == "__main__":

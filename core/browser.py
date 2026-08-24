@@ -65,16 +65,18 @@ def search_and_filter(page, role):
         from urllib.parse import quote
         encoded_query = quote(search_query)
 
-        # Go directly to LinkedIn search posts URL
+        # Posts + past 24h in the URL so we do not depend on the filter UI
         search_url = (
             f"https://www.linkedin.com/search/results/content/"
             f"?keywords={encoded_query}"
-            f"&sortBy=date_posted"
+            f"&datePosted=%22past-24h%22"
+            f"&origin=FACETED_SEARCH"
+            f"&sortBy=%22date_posted%22"
         )
 
-        page.goto(search_url, timeout=30000)
-        page.wait_for_timeout(4000)
-        print("  ✅ Search page loaded!")
+        page.goto(search_url, timeout=45000)
+        page.wait_for_timeout(6000)
+        print("  ✅ Search page loaded (24h URL)!")
 
     except Exception as e:
         print(f"  ⚠  URL navigation failed: {e}")
