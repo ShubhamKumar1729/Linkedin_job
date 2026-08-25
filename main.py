@@ -105,6 +105,12 @@ def process_role(page, role, resume_path):
                 if not post_text:
                     continue
 
+                emails = filter_recruiter_emails(extract_emails(post_text))
+                emails = [e for e in emails if not already_sent(e)]
+                if not emails:
+                    print(f"  {idx:>3}. ⛔ Already contacted / no new email")
+                    continue
+
                 allowed, reason = should_send_to_post(post_text)
                 if not allowed:
                     print(f"  {idx:>3}. ⛔ Skipped → {reason}")
@@ -114,12 +120,6 @@ def process_role(page, role, resume_path):
                 print(f"  {idx:>3}. 🤖 {groq_reason}")
                 if not groq_ok:
                     print("       ⛔ Groq said not relevant")
-                    continue
-
-                emails = filter_recruiter_emails(extract_emails(post_text))
-                emails = [e for e in emails if not already_sent(e)]
-                if not emails:
-                    print("       ⛔ No new email (already contacted or invalid)")
                     continue
 
                 post_link = card.get("link") if isinstance(card, dict) else ""

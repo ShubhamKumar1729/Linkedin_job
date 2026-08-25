@@ -24,7 +24,10 @@ def load_sent_cache():
             _SENT_CACHE.add((email, link))
             if email:
                 _SENT_EMAILS.add(email)
-        print(f"  Loaded {len(_SENT_CACHE)} previously sent records.")
+        print(
+            f"  Loaded {len(_SENT_CACHE)} sent rows "
+            f"({len(_SENT_EMAILS)} unique inboxes)."
+        )
     except Exception as e:
         print(f"  Could not load sent cache: {e}")
 

@@ -15,12 +15,36 @@ def launch_browser(playwright):
 
 
 def scroll_page(page, rounds=None):
-    """Scroll down LinkedIn page to load more posts."""
+    """Scroll the search results pane so LinkedIn lazy-loads more posts."""
     if rounds is None:
         rounds = SCROLL_ROUNDS
     for _ in range(rounds):
-        page.mouse.wheel(0, 1800)
-        page.wait_for_timeout(900)
+        try:
+            page.evaluate(
+                """() => {
+                    const el = document.querySelector('.scaffold-finite-scroll')
+                        || document.querySelector('main')
+                        || document.scrollingElement;
+                    if (el) el.scrollBy(0, 2400);
+                    window.scrollBy(0, 2400);
+                }"""
+            )
+        except Exception:
+            page.mouse.wheel(0, 2200)
+        try:
+            page.keyboard.press("End")
+        except Exception:
+            pass
+        page.wait_for_timeout(1100)
+        for label in ("Show more results", "See more results", "Show more"):
+            try:
+                btn = page.get_by_role("button", name=label)
+                if btn.count() > 0:
+                    btn.first.click(timeout=800)
+                    page.wait_for_timeout(800)
+                    break
+            except Exception:
+                pass
 
 
 def open_linkedin_and_check_login(page):
@@ -193,10 +217,12 @@ def _apply_24h_filter(page):
 
         # ── Click Past 24 Hours option ─────────────────────
         hour_selectors = [
+            "label:has-text('Past week')",
+            "span:has-text('Past week')",
             "label:has-text('Past 24 hours')",
             "span:has-text('Past 24 hours')",
-            "div:has-text('Past 24 hours')",
-            "li:has-text('Past 24 hours')",
+            "div:has-text('Past week')",
+            "li:has-text('Past week')",
         ]
 
         clicked_24h = False
@@ -214,9 +240,7 @@ def _apply_24h_filter(page):
 
         if not clicked_24h:
             try:
-                page.get_by_text(
-                    "Past 24 hours", exact=True
-                ).click(timeout=3000)
+                page.get_by_text("Past week", exact=True).click(timeout=2500)
                 page.wait_for_timeout(1000)
                 clicked_24h = True
                 print("  ✅ Past 24 hours selected!")
