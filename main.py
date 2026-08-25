@@ -21,7 +21,7 @@ from core.browser      import (
     open_linkedin_and_check_login,
     search_and_filter,
 )
-from core.scraper      import get_cards, get_post_link_from_card, extract_poster_name
+from core.scraper      import get_cards
 from core.filters      import should_send_to_post, filter_recruiter_emails
 from core.groq_filter  import groq_is_relevant
 from core.email_sender import send_email
@@ -117,20 +117,12 @@ def process_role(page, role, resume_path):
                     continue
 
                 emails = filter_recruiter_emails(extract_emails(post_text))
-<<<<<<< HEAD
-                if not emails:
-                    print("       ⛔ No valid email")
-                    continue
-
-                post_link = get_post_link_from_card(page, card)
-=======
                 emails = [e for e in emails if not already_sent(e)]
                 if not emails:
                     print("       ⛔ No new email (already contacted or invalid)")
                     continue
 
                 post_link = card.get("link") if isinstance(card, dict) else ""
->>>>>>> 8732080 (Stop Playwright freezes and skip duplicate recruiter inboxes.)
                 if not post_link:
                     print("       ⚠  No LinkedIn URL — sending with text fallback id")
                     post_link = f"fallback:{emails[0]}"
@@ -140,13 +132,9 @@ def process_role(page, role, resume_path):
                     continue
                 seen_posts.add(post_link)
 
-<<<<<<< HEAD
-                recruiter_name = extract_poster_name(card)
-=======
                 recruiter_name = ""
                 if isinstance(card, dict):
                     recruiter_name = card.get("name") or ""
->>>>>>> 8732080 (Stop Playwright freezes and skip duplicate recruiter inboxes.)
 
                 print("       ✅ Valid post")
                 print(f"       🔗 {post_link}")
@@ -256,4 +244,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n  ⏹  Stopped by user. Progress is saved in output/sent_emails.csv\n")
