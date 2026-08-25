@@ -25,7 +25,7 @@ from core.scraper      import get_cards, get_post_link_from_card, extract_poster
 from core.filters      import should_send_to_post, filter_recruiter_emails
 from core.groq_filter  import groq_is_relevant
 from core.email_sender import send_email
-from core.tracker      import load_sent_cache
+from core.tracker      import load_sent_cache, already_sent
 from utils.helpers     import clean, extract_emails
 
 
@@ -101,7 +101,9 @@ def process_role(page, role, resume_path):
                 break
 
             try:
-                post_text = clean(card.inner_text(timeout=2000))
+                post_text = clean(card.get("text") if isinstance(card, dict) else "")
+                if not post_text:
+                    continue
 
                 allowed, reason = should_send_to_post(post_text)
                 if not allowed:
@@ -115,11 +117,20 @@ def process_role(page, role, resume_path):
                     continue
 
                 emails = filter_recruiter_emails(extract_emails(post_text))
+<<<<<<< HEAD
                 if not emails:
                     print("       ⛔ No valid email")
                     continue
 
                 post_link = get_post_link_from_card(page, card)
+=======
+                emails = [e for e in emails if not already_sent(e)]
+                if not emails:
+                    print("       ⛔ No new email (already contacted or invalid)")
+                    continue
+
+                post_link = card.get("link") if isinstance(card, dict) else ""
+>>>>>>> 8732080 (Stop Playwright freezes and skip duplicate recruiter inboxes.)
                 if not post_link:
                     print("       ⚠  No LinkedIn URL — sending with text fallback id")
                     post_link = f"fallback:{emails[0]}"
@@ -129,7 +140,13 @@ def process_role(page, role, resume_path):
                     continue
                 seen_posts.add(post_link)
 
+<<<<<<< HEAD
                 recruiter_name = extract_poster_name(card)
+=======
+                recruiter_name = ""
+                if isinstance(card, dict):
+                    recruiter_name = card.get("name") or ""
+>>>>>>> 8732080 (Stop Playwright freezes and skip duplicate recruiter inboxes.)
 
                 print("       ✅ Valid post")
                 print(f"       🔗 {post_link}")
@@ -139,6 +156,9 @@ def process_role(page, role, resume_path):
                 for email in emails:
                     if role_sent >= MAX_EMAILS_PER_ROLE:
                         break
+                    if already_sent(email):
+                        print(f"    ⚠  Skipped (already sent)  : {email}")
+                        continue
 
                     success = send_email(
                         to_email=email,
