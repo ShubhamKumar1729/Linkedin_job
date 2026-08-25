@@ -124,8 +124,8 @@ def process_role(page, role, resume_path):
 
                 post_link = card.get("link") if isinstance(card, dict) else ""
                 if not post_link:
-                    print("       ⚠  No LinkedIn URL — sending with text fallback id")
-                    post_link = f"fallback:{emails[0]}"
+                    print("       ⛔ No post link — not sending")
+                    continue
 
                 if post_link in seen_posts:
                     print("       ⛔ Duplicate post")
