@@ -65,29 +65,29 @@ def search_and_filter(page, role):
         from urllib.parse import quote
         encoded_query = quote(search_query)
 
-        # Posts + past 24h in the URL so we do not depend on the filter UI
+        # Same search URL that worked before — then apply 24h in the UI.
+        # The quoted datePosted URL was loading an empty results page.
         search_url = (
             f"https://www.linkedin.com/search/results/content/"
             f"?keywords={encoded_query}"
-            f"&datePosted=%22past-24h%22"
-            f"&origin=FACETED_SEARCH"
             f"&sortBy=%22date_posted%22"
         )
 
         page.goto(search_url, timeout=45000)
-        page.wait_for_timeout(6000)
-        print("  ✅ Search page loaded (24h URL)!")
+        try:
+            page.wait_for_selector("main", timeout=15000)
+        except Exception:
+            pass
+        page.wait_for_timeout(4000)
+        print("  ✅ Search page loaded!")
+        print(f"     url: {page.url[:90]}")
 
     except Exception as e:
         print(f"  ⚠  URL navigation failed: {e}")
-        # Fallback - try search bar
         _try_searchbar(page, search_query)
 
-    # URL already includes datePosted=past-24h
-    if "datePosted" not in (page.url or ""):
-        _apply_24h_filter(page)
-    else:
-        print("  ✅ Past 24 hours already in URL — skip filter UI")
+    _apply_24h_filter(page)
+    page.wait_for_timeout(2500)
 
 
 def _try_searchbar(page, search_query):

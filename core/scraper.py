@@ -9,62 +9,60 @@ JUNK_PHRASES = [
     "content type",
 ]
 
-# Keep this list tight. Scanning every `main div` freezes Playwright.
-CARD_SELECTORS = [
-    "div.feed-shared-update-v2",
-    "li.reusable-search__result-container",
-    "div.reusable-search__result-container",
-    "div[data-chameleon-result-urn]",
-    "div[data-urn*='activity']",
-    "div[data-urn*='ugcPost']",
-]
-
+# One in-page pass. Finds any block that contains an email — does not
+# depend on LinkedIn class names (those change and were returning 0).
 EXTRACT_JS = """
-(sels) => {
-  const seen = new Set();
-  const out = [];
+() => {
+  const emailRe = /[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}/;
+  const root = document.querySelector('main') || document.body;
+  const hits = [];
+  const nodes = root.querySelectorAll('li, article, section, div');
+  for (const el of nodes) {
+    const text = (el.innerText || '').trim();
+    if (text.length < 50 || text.length > 7000) continue;
+    if (!emailRe.test(text)) continue;
+    hits.push(el);
+    if (hits.length > 400) break;
+  }
+  const leaves = hits.filter(el => !hits.some(other => other !== el && el.contains(other)));
+
   const pickUrn = (el) => {
     const attrs = ['data-urn', 'data-chameleon-result-urn', 'data-id'];
     let node = el;
-    for (let i = 0; i < 10 && node; i++) {
+    for (let i = 0; i < 12 && node; i++) {
       for (const a of attrs) {
         const v = node.getAttribute && node.getAttribute(a);
-        if (v && (v.includes('activity') || v.includes('ugcPost') || v.includes('urn:li'))) {
+        if (v && (String(v).includes('activity') || String(v).includes('ugcPost') || String(v).includes('urn:li'))) {
           return v;
         }
       }
       node = node.parentElement;
     }
-    const html = (el.outerHTML || '').slice(0, 12000);
+    const html = (el.outerHTML || '').slice(0, 16000);
     const m = html.match(/urn:li:(?:activity|ugcPost):\\d+/);
     return m ? m[0] : '';
   };
-  const pickName = (el) => {
-    const n = el.querySelector(
-      'span.update-components-actor__name, .update-components-actor__name, .feed-shared-actor__name'
+
+  const seen = new Set();
+  const out = [];
+  for (const el of leaves) {
+    const text = (el.innerText || '').trim();
+    const key = text.slice(0, 280);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const hrefs = Array.from(el.querySelectorAll('a[href]')).map(a => a.href || '');
+    const href = hrefs.find(h => h.includes('/feed/update/') || h.includes('/posts/')) || '';
+    const nameEl = el.querySelector(
+      'span.update-components-actor__name, .update-components-actor__name, .feed-shared-actor__name, a.app-aware-link span[aria-hidden="true"]'
     );
-    return n ? (n.innerText || '').trim().split(/\\s+/)[0] : '';
-  };
-  const pickHref = (el) => {
-    const as = Array.from(el.querySelectorAll('a[href]')).map(a => a.href || '');
-    return as.find(h => h.includes('/feed/update/') || h.includes('/posts/')) || '';
-  };
-  for (const sel of sels) {
-    document.querySelectorAll(sel).forEach((el) => {
-      const text = (el.innerText || '').trim();
-      if (text.length < 40) return;
-      const key = text.slice(0, 400);
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push({
-        text,
-        urn: pickUrn(el),
-        href: pickHref(el),
-        name: pickName(el),
-      });
+    out.push({
+      text,
+      urn: pickUrn(el),
+      href,
+      name: nameEl ? (nameEl.innerText || '').trim().split(/\\s+/)[0] : '',
     });
   }
-  return out;
+  return { scanned: hits.length, items: out };
 }
 """
 
@@ -86,31 +84,21 @@ def _link_from_item(item):
     return ""
 
 
-def extract_poster_name(card_or_item):
-    if isinstance(card_or_item, dict):
-        name = clean(card_or_item.get("name") or "")
-        name = re.sub(r"[^a-zA-Z\-]", "", name.split()[0] if name else "")
-        return name
-    return ""
-
-
-def get_post_link_from_card(_page, card_or_item):
-    if isinstance(card_or_item, dict):
-        return _link_from_item(card_or_item)
-    return ""
-
-
 def get_cards(page):
-    """Return list of dicts: text, link, name. One JS pass — no per-node hangs."""
+    """Return list of dicts: text, link, name."""
     try:
-        raw = page.evaluate(EXTRACT_JS, CARD_SELECTORS) or []
+        raw = page.evaluate(EXTRACT_JS) or {}
     except Exception as e:
         print(f"     (card extract failed: {e})")
-        raw = []
+        raw = {}
+
+    items = raw.get("items") if isinstance(raw, dict) else raw
+    scanned = raw.get("scanned", len(items or [])) if isinstance(raw, dict) else 0
+    items = items or []
 
     posts = []
     seen = set()
-    for item in raw:
+    for item in items:
         text = clean(item.get("text") or "")
         if len(text) < 40:
             continue
@@ -129,5 +117,5 @@ def get_cards(page):
             name = re.sub(r"[^a-zA-Z\-]", "", name.split()[0])
         posts.append({"text": text, "link": link, "name": name})
 
-    print(f"     (scanned {len(raw)} cards, {len(posts)} with emails)")
+    print(f"     (scanned {scanned} nodes, {len(posts)} with emails)")
     return posts
