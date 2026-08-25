@@ -89,12 +89,11 @@ def search_and_filter(page, role):
         from urllib.parse import quote
         encoded_query = quote(search_query)
 
-        # Same search URL that worked before — then apply 24h in the UI.
-        # The quoted datePosted URL was loading an empty results page.
+        # Header-style "All" search, then click Posts.
         search_url = (
-            f"https://www.linkedin.com/search/results/content/"
+            f"https://www.linkedin.com/search/results/all/"
             f"?keywords={encoded_query}"
-            f"&sortBy=%22date_posted%22"
+            f"&origin=RICH_QUERY_TYPEAHEAD_HISTORY"
         )
 
         page.goto(search_url, timeout=45000)
@@ -102,14 +101,15 @@ def search_and_filter(page, role):
             page.wait_for_selector("main", timeout=15000)
         except Exception:
             pass
-        page.wait_for_timeout(4000)
+        page.wait_for_timeout(3500)
         print("  ✅ Search page loaded!")
-        print(f"     url: {page.url[:90]}")
+        print(f"     url: {page.url[:110]}")
 
     except Exception as e:
         print(f"  ⚠  URL navigation failed: {e}")
         _try_searchbar(page, search_query)
 
+    _click_posts_tab(page)
     _apply_24h_filter(page)
     page.wait_for_timeout(2500)
 
